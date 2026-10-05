@@ -11,7 +11,7 @@ use kq_index::Index;
 
 use crate::render;
 use crate::resource_json;
-use crate::{parse_ref, read, Ctx};
+use crate::{container, parse_ref, read, Ctx};
 
 #[derive(Clone, Debug)]
 pub struct Loaded {
@@ -19,10 +19,12 @@ pub struct Loaded {
     pub value: J,
 }
 
+/// `from` is the option that named a container and its value, e.g.
+/// `("--against", "2da.bif")`, so a bad name can be reported with the flag.
 pub fn load(
     ctx: &Ctx,
     spec: &str,
-    from: Option<&str>,
+    from: Option<(&str, &str)>,
     content_only: bool,
     other_root: Option<&Path>,
 ) -> Result<Loaded> {
@@ -47,19 +49,14 @@ pub fn load(
 fn load_indexed(
     index: &Index,
     spec: &str,
-    from: Option<&str>,
+    from: Option<(&str, &str)>,
     content_only: bool,
 ) -> Result<Loaded> {
     let (name, want) = parse_ref(spec, None)?;
     let resource = match from {
-        Some(container) => index
-            .lookup(&name)
-            .iter()
-            .map(|&i| &index.resources[i as usize])
-            .find(|r| {
-                want.is_none_or(|t| r.restype == t)
-                    && index.source(r).label.eq_ignore_ascii_case(container)
-            }),
+        Some((flag, from)) => {
+            Some(container::find(index, &name, want, flag, from).map_err(anyhow::Error::msg)?)
+        }
         None => index.resolve(&name, want),
     };
     let Some(resource) = resource else {

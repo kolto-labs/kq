@@ -46,7 +46,7 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<i32> {
     let loaded = side::load(
         ctx,
         &args.target,
-        args.from.as_deref(),
+        args.from.as_deref().map(|f| ("--from", f)),
         !args.envelope,
         None,
     )?;
