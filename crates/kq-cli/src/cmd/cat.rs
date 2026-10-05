@@ -28,9 +28,10 @@ pub struct Args {
     #[arg(short = 't', long = "type", value_name = "EXT")]
     restype: Option<String>,
 
-    /// How to render the resource (`json` is the default structured form).
-    #[arg(short = 'f', long, value_name = "FORMAT", default_value = "json")]
-    format: Format,
+    /// How to render the resource. Without it, `cat` prints the JSON
+    /// envelope, or an outline under `--text`.
+    #[arg(short = 'f', long, value_name = "FORMAT")]
+    format: Option<Format>,
 
     /// Write the resource's exact bytes. Same as `--format raw`.
     #[arg(long)]
@@ -120,16 +121,7 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<i32> {
     let stdout = std::io::stdout();
     let mut w = stdout.lock();
 
-    let format = if args.raw {
-        Format::Raw
-    } else if ctx.out.text {
-        match args.format {
-            Format::Json => Format::Outline,
-            other => other,
-        }
-    } else {
-        Format::Json
-    };
+    let format = output_format(args.raw, args.format, ctx.out.text);
 
     if format == Format::Raw {
         w.write_all(&bytes)?;
@@ -151,6 +143,18 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<i32> {
 
     w.write_all(render::render(&decoded, format, &resource.filename())?.as_bytes())?;
     Ok(exit::OK)
+}
+
+/// Pick the output format. `--raw` wins, then an explicit `-f`, so
+/// `kq cat x.2da -f gron` prints gron without also needing `--text`. With
+/// neither, `--text` means an outline and the default is the JSON envelope.
+fn output_format(raw: bool, explicit: Option<Format>, text: bool) -> Format {
+    match (raw, explicit) {
+        (true, _) => Format::Raw,
+        (false, Some(format)) => format,
+        (false, None) if text => Format::Outline,
+        (false, None) => Format::Json,
+    }
 }
 
 fn parse_type(ext: &str) -> Result<ResType> {
