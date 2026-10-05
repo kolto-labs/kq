@@ -68,18 +68,19 @@ struct Report<'a> {
 
 pub fn run(ctx: &Ctx, args: Args) -> Result<i32> {
     let content_only = !args.envelope;
-    let base = side::load(ctx, &args.base, args.from.as_deref(), content_only, None)?;
+    let from = args.from.as_deref().map(|f| ("--from", f));
+    let base = side::load(ctx, &args.base, from, content_only, None)?;
     let ours = side::load(
         ctx,
         &args.ours,
-        args.from_ours.as_deref(),
+        args.from_ours.as_deref().map(|f| ("--from-ours", f)),
         content_only,
         None,
     )?;
     let theirs = side::load(
         ctx,
         &args.theirs,
-        args.from_theirs.as_deref(),
+        args.from_theirs.as_deref().map(|f| ("--from-theirs", f)),
         content_only,
         None,
     )?;

@@ -109,7 +109,8 @@ Every listed path is relative to the install root. An archive
 
 `modules/end_m01aa.mod/end_trask.utc`, `data/2da.bif/appearance.2da`,
 `Override/appearance.2da`. `--from` still matches the container label
-(`end_m01aa.mod`, `data/2da.bif`), not that virtual path.
+(`end_m01aa.mod`, `data/2da.bif`), not that virtual path. A bare archive
+name (`2da.bif`) also works when only one container has that name.
 
 A *module* is usually `name.rim` + `name_s.rim` + `name_dlg.erf`, or one
 `name.mod` that replaces the trio. `-m danm13` selects that combined
@@ -183,7 +184,9 @@ not a git wrapper: the document is `kq-delta-1` (JSON Patch ops). `patch`
 applies that document. `merge` is a three-way merge; leftover conflicts are
 `_conflict` objects. Exit `5` means “they differ” or “unresolved conflicts”.
 
-`--from` matches the container label `which` prints.
+`--from` matches the container label `which` prints, or its bare file
+name when that is unambiguous (`--against 2da.bif`). A name that matches
+no container is an error that lists where the resource is.
 
 ### Search dialogue for a speaker
 

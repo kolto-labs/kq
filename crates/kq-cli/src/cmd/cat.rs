@@ -10,7 +10,7 @@ use kq_index::{Index, Resource};
 
 use crate::render::{self, DisasmMode, Format};
 use crate::resource_json;
-use crate::{exit, read, Ctx};
+use crate::{container, exit, read, Ctx};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -72,14 +72,13 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<i32> {
         (Some(tag), None, Some(module)) => select_tag_from_module(&index, tag, want, module)?,
         (Some(_), _, _) => bail!("--tag requires --module and cannot be used with --from"),
         (None, Some(_), None) if from_file.is_some() => index.resolve(&name, want),
-        (None, Some(container), None) => index
-            .lookup(&name)
-            .iter()
-            .map(|&i| &index.resources[i as usize])
-            .find(|r| {
-                want.is_none_or(|t| r.restype == t)
-                    && index.source(r).label.eq_ignore_ascii_case(container)
-            }),
+        (None, Some(label), None) => match container::find(&index, &name, want, "--from", label) {
+            Ok(resource) => Some(resource),
+            Err(message) => {
+                eprintln!("kq: {message}");
+                return Ok(exit::NO_MATCH);
+            }
+        },
         (None, None, Some(module)) => {
             if !index
                 .module_roots()

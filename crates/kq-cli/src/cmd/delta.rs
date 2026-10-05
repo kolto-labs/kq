@@ -91,7 +91,8 @@ fn load_pair(ctx: &Ctx, args: &Args, content_only: bool) -> Result<(Loaded, Load
         }
         return side::load_shadow_pair(ctx, &args.left, content_only);
     }
-    let left = side::load(ctx, &args.left, args.from.as_deref(), content_only, None)?;
+    let from = args.from.as_deref().map(|f| ("--from", f));
+    let left = side::load(ctx, &args.left, from, content_only, None)?;
     let right_spec = args.right.as_deref().unwrap_or(&args.left);
     if args.right.is_none() && args.other.is_none() && args.against.is_none() {
         bail!("RIGHT is required unless --shadow, --against, or --other is set");
@@ -103,7 +104,7 @@ fn load_pair(ctx: &Ctx, args: &Args, content_only: bool) -> Result<(Loaded, Load
     let right = side::load(
         ctx,
         right_spec,
-        args.against.as_deref(),
+        args.against.as_deref().map(|f| ("--against", f)),
         content_only,
         other,
     )?;

@@ -1,5 +1,6 @@
 //! `kq` — query a KotOR installation like it was plain text.
 
+mod container;
 mod exit;
 mod filter;
 mod glob;
