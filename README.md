@@ -175,7 +175,8 @@ kq which n_bastila -t utc
 
 ### `kq cat <resref>`
 
-Print a resource as text. Default is an indented outline.
+Print a resource. Default is the JSON envelope; `--text` gives an indented
+outline. An explicit `-f` always wins, with or without `--text`.
 
 ```bash
 kq cat bastila00c.utc
@@ -192,9 +193,9 @@ Formats (`-f`):
 
 | Value | What you get |
 |-------|----------------|
-| `outline` | indented tree, for reading (default) |
+| `outline` | indented tree, for reading (default with `--text`) |
 | `gron` | one `path = value` line per leaf — safe to pipe through `rg` |
-| `json` | the same tree as JSON, for `jq` |
+| `json` | the resource envelope with the tree in `content`, for `jq` (default) |
 | `raw` | exact bytes (`--raw` is the same) |
 
 ### `kq delta LEFT RIGHT`
