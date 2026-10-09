@@ -19,7 +19,9 @@ pub fn parse_action_names(src: &str) -> Vec<String> {
         r"^\s*(?:void|int|float|string|object|effect|event|location|talent|vector|action|itemproperty)\s+(\w+)\s*\(",
     )
     .unwrap();
-    let code = line.replace_all(&block.replace_all(src, ""), "").into_owned();
+    let code = line
+        .replace_all(&block.replace_all(src, ""), "")
+        .into_owned();
     code.split(';')
         .filter_map(|stmt| proto.captures(stmt).map(|c| c[1].to_string()))
         .collect()
