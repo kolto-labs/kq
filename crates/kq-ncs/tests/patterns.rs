@@ -31,7 +31,7 @@ fn golden_false_starting_conditional() {
         ("MOVSP", vec![Int(-4)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1);
+    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
     assert_eq!(
         d.source.trim(),
         "int StartingConditional() {\n\treturn 0;\n}"
@@ -57,7 +57,7 @@ fn golden_k_pdan_juhani11_if() {
         ("ACTION", vec![Int(581), Int(2)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1);
+    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
     assert_eq!(
         d.source.trim(),
         "void main() {\n\tif (GetGlobalNumber(\"DAN_JEDI_PLOT\") == 3) {\n\t\tSetGlobalNumber(\"DAN_JEDI_PLOT\", 4);\n\t}\n\tSetGlobalNumber(\"DAN_JUHANI_PLOT\", 2);\n}"
@@ -105,7 +105,7 @@ fn golden_hjuh_h02_and_guard() {
         ("MOVSP", vec![Int(-4)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1);
+    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
     assert_eq!(
         d.source.trim(),
         "int StartingConditional() {\n\tint int1 = GetGlobalNumber(\"G_JUHANIH_STATE\") == 1 && GetHitDice(GetFirstPC()) > GetGlobalNumber(\"T_LEVH\");\n\tif (int1) {\n\t\tSetGlobalNumber(\"G_JUHANIH_STATE\", 2);\n\t\tSetGlobalNumber(\"T_LEVH\", GetGlobalNumber(\"T_LEVH\") + 1);\n\t}\n\treturn int1;\n}"
@@ -134,7 +134,7 @@ fn golden_while() {
         ("MOVSP", vec![Int(-4)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1);
+    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
     assert_eq!(
         d.source.trim(),
         "void main() {\n\tint int1 = 0;\n\twhile (int1 < 3) {\n\t\tint1++;\n\t}\n}"
@@ -163,7 +163,7 @@ fn do_while_jz_skips_back_edge() {
         ("MOVSP", vec![Int(-4)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1);
+    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
     assert_eq!(
         d.source.trim(),
         "void main() {\n\tint int1 = 0;\n\tdo {\n\t\tint1++;\n\t} while (int1 < 3);\n}"
@@ -297,7 +297,7 @@ fn golden_pman_comp08_full() {
         ("MOVSP", vec![Int(-8)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1);
+    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
     assert_eq!(
         d.source.trim(),
         "\
@@ -344,7 +344,7 @@ fn golden_pdan_mand04_or() {
         ("MOVSP", vec![Int(-4)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1);
+    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
     assert_eq!(
         d.source.trim(),
         "\
@@ -381,7 +381,7 @@ fn switch_with_default() {
         ("MOVSP", vec![Int(-4)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1);
+    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
     assert_eq!(
         d.source.trim(),
         "\

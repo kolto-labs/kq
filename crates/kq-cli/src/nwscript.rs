@@ -37,6 +37,21 @@ pub fn action_names(index: &Index) -> Option<Vec<String>> {
     (!names.is_empty()).then_some(names)
 }
 
+/// Signatures from the install's `nwscript.nss`. Empty when it has none, so
+/// ACTION calls then stay disassembly comments.
+pub fn action_table(index: &Index) -> kq_ncs::ActionTable {
+    let Some(nss) = ResType::from_extension("nss") else {
+        return kq_ncs::ActionTable::empty();
+    };
+    let Some(r) = index.resolve("nwscript", Some(nss)) else {
+        return kq_ncs::ActionTable::empty();
+    };
+    match read::read(index, r) {
+        Ok(bytes) => kq_ncs::ActionTable::from_nwscript(&String::from_utf8_lossy(&bytes)),
+        Err(_) => kq_ncs::ActionTable::empty(),
+    }
+}
+
 /// Put the install's function names on the `routine` entries of a decoded NCS.
 pub fn name_routines(index: &Index, ncs_json: &mut J) {
     let Some(list) = ncs_json.get_mut("instructions").and_then(J::as_array_mut) else {

@@ -1109,7 +1109,7 @@ fn scan_bytes(
         let Ok(n) = ncs::read(bytes, path) else {
             return;
         };
-        let d = kq_ncs::decompile(&n, index.game);
+        let d = kq_ncs::decompile(&n, index.game, &crate::nwscript::action_table(index));
         let mut seen_inc = HashSet::new();
         take_nss_tree(
             &d.source,

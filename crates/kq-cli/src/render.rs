@@ -63,6 +63,7 @@ pub fn decode_resource_mode(
         Some(r.restype),
         &r.filename(),
         index.game,
+        &crate::nwscript::action_table(index),
         disasm,
     )?;
     if let (DisasmMode::On, Decoded::Value(v)) = (disasm, &mut decoded) {
@@ -91,7 +92,7 @@ fn companion_mdx(index: &Index, r: &Resource) -> Option<Vec<u8>> {
 /// Decode a resource. `restype` is a hint used only when sniffing is
 /// inconclusive.
 pub fn decode(bytes: &[u8], restype: Option<ResType>, name: &str) -> Result<Decoded> {
-    decode_ex(bytes, None, restype, name, Game::K1, DisasmMode::Off)
+    decode_ex(bytes, None, restype, name, Game::K1, &kq_ncs::ActionTable::empty(), DisasmMode::Off)
 }
 
 pub fn decode_with_mdx(
@@ -100,7 +101,7 @@ pub fn decode_with_mdx(
     restype: Option<ResType>,
     name: &str,
 ) -> Result<Decoded> {
-    decode_ex(bytes, mdx, restype, name, Game::K1, DisasmMode::Off)
+    decode_ex(bytes, mdx, restype, name, Game::K1, &kq_ncs::ActionTable::empty(), DisasmMode::Off)
 }
 
 fn decode_ex(
@@ -109,6 +110,7 @@ fn decode_ex(
     restype: Option<ResType>,
     name: &str,
     game: Game,
+    actions: &kq_ncs::ActionTable,
     disasm: DisasmMode,
 ) -> Result<Decoded> {
     let path = std::path::Path::new(name);
@@ -146,7 +148,7 @@ fn decode_ex(
         if disasm == DisasmMode::On {
             return Ok(Decoded::Value(text::ncs_to_json(&n)));
         }
-        let d = kq_ncs::decompile(&n, game);
+        let d = kq_ncs::decompile(&n, game, actions);
         return Ok(Decoded::Text(d.source));
     }
     if bwm::sniff(bytes) {
@@ -302,6 +304,7 @@ mod tests {
             ncs,
             "t.ncs",
             Game::K1,
+            &kq_ncs::ActionTable::empty(),
             DisasmMode::Off,
         )
         .unwrap();
@@ -316,7 +319,7 @@ mod tests {
     #[test]
     fn cat_ncs_disasm_is_instruction_json_value() {
         let bytes = minimal_ncs_bytes();
-        let decoded = decode_ex(&bytes, None, None, "t.ncs", Game::K1, DisasmMode::On).unwrap();
+        let decoded = decode_ex(&bytes, None, None, "t.ncs", Game::K1, &kq_ncs::ActionTable::empty(), DisasmMode::On).unwrap();
         match decoded {
             Decoded::Value(v) => assert!(v.get("instructions").is_some()),
             _ => panic!("expected Value"),
