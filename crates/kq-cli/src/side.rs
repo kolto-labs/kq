@@ -34,19 +34,20 @@ pub fn load(
     }
     let path = PathBuf::from(spec);
     if path.exists() || spec.contains('/') || spec.contains('\\') {
-        return load_file(&path, content_only);
+        return load_file(ctx, &path, content_only);
     }
     if let Some(root) = other_root {
         let read_cache = ctx.use_cache && !ctx.refresh;
         let (_inst, idx, _) = kq_index::open(root, read_cache, false)?;
-        load_indexed(&idx, spec, from, content_only)
+        load_indexed(ctx, &idx, spec, from, content_only)
     } else {
         let index = ctx.index()?;
-        load_indexed(&index, spec, from, content_only)
+        load_indexed(ctx, &index, spec, from, content_only)
     }
 }
 
 fn load_indexed(
+    ctx: &Ctx,
     index: &Index,
     spec: &str,
     from: Option<(&str, &str)>,
@@ -63,7 +64,7 @@ fn load_indexed(
         bail!("no resource named {spec}");
     };
     let bytes = read::read(index, resource)?;
-    let decoded = render::decode_resource(index, resource, &bytes)?;
+    let decoded = render::decode_resource(ctx, index, resource, &bytes)?;
     let env = resource_json::build_resource_json(index, resource, &decoded);
     let value = if content_only {
         resource_json::decoded_to_json(&decoded)
@@ -76,7 +77,7 @@ fn load_indexed(
     })
 }
 
-fn load_file(path: &Path, content_only: bool) -> Result<Loaded> {
+fn load_file(ctx: &Ctx, path: &Path, content_only: bool) -> Result<Loaded> {
     let bytes = fs::read(path).with_context(|| format!("cannot read {}", path.display()))?;
     let name = path
         .file_name()
@@ -96,7 +97,7 @@ fn load_file(path: &Path, content_only: bool) -> Result<Loaded> {
     };
     let decoded = match mdx.as_deref() {
         Some(ext) => render::decode_with_mdx(&bytes, Some(ext), restype, &name)?,
-        None => render::decode(&bytes, restype, &name)?,
+        None => render::decode(ctx, &bytes, restype, &name)?,
     };
     Ok(Loaded {
         label: path.display().to_string(),
@@ -147,14 +148,19 @@ pub fn load_shadow_pair(ctx: &Ctx, spec: &str, content_only: bool) -> Result<(Lo
     if copies.len() < 2 {
         bail!("{spec}: no shadowed copy (only {} match)", copies.len());
     }
-    let left = decode_one(&index, copies[0], content_only)?;
-    let right = decode_one(&index, copies[1], content_only)?;
+    let left = decode_one(ctx, &index, copies[0], content_only)?;
+    let right = decode_one(ctx, &index, copies[1], content_only)?;
     Ok((left, right))
 }
 
-fn decode_one(index: &Index, r: &kq_index::Resource, content_only: bool) -> Result<Loaded> {
+fn decode_one(
+    ctx: &Ctx,
+    index: &Index,
+    r: &kq_index::Resource,
+    content_only: bool,
+) -> Result<Loaded> {
     let bytes = read::read(index, r)?;
-    let decoded = render::decode_resource(index, r, &bytes)?;
+    let decoded = render::decode_resource(ctx, index, r, &bytes)?;
     let env = resource_json::build_resource_json(index, r, &decoded);
     let value = if content_only {
         resource_json::decoded_to_json(&decoded)

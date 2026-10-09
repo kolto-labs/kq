@@ -123,6 +123,19 @@ A directory *inside* an install (`-i Override` from the game root) still
 means the whole install. A named *file* never does: `-i modules/danm13.mod`
 means that one archive.
 
+### Engine function names
+
+Decompiling a script (`kq cat x.ncs`, `--disasm`, `kq grep -t ncs`, `kq graph`)
+needs the game's `nwscript.nss`. kq does not ship it. Give it one of two ways:
+
+```bash
+kq --nwscript ~/kotor/Override/nwscript.nss cat k_sup_dialog.ncs --text
+kq -i ~/kotor cat k_sup_dialog.ncs --text
+```
+
+With `-i`, kq finds `nwscript.nss` the way the game does: `Override` first,
+then the game's archives. Without either, the command stops and says what to pass.
+
 ---
 
 ## Commands

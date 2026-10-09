@@ -304,7 +304,7 @@ impl LiveGraph {
     }
 }
 
-pub fn build(index: &Index) -> Result<LiveGraph> {
+pub fn build(index: &Index, actions: &kq_ncs::ActionTable) -> Result<LiveGraph> {
     let catalog: HashSet<String> = index.resources.iter().map(|r| r.resref.clone()).collect();
     let module_roots: HashSet<String> = index
         .module_roots()
@@ -333,7 +333,6 @@ pub fn build(index: &Index) -> Result<LiveGraph> {
     // One file at a time, resources in offset order. Nested rayon over a USB
     // mmap random-faults the same BIF and turned a ~30s scan into minutes.
     let groups = group_scan_ids_by_file(index, &scan_ids);
-    let actions = crate::nwscript::action_table(index);
     let mut hits = Vec::<(u32, HashSet<String>, HashSet<i64>, HashSet<String>)>::new();
     for (file_idx, ids) in &groups {
         let path = &index.files[*file_idx as usize];
@@ -360,7 +359,7 @@ pub fn build(index: &Index) -> Result<LiveGraph> {
                 &scope,
                 &module_roots,
                 &catalog,
-                &actions,
+                actions,
                 &mut mentions,
                 &mut strrefs,
                 &mut missing,
@@ -2157,7 +2156,7 @@ mod tests {
         let lyt_ty = ResType::from_extension("lyt").unwrap();
         let lyt_id = *loaded.get(&(None, "m01aa".into(), lyt_ty)).unwrap();
 
-        let graph = build(&index).expect("build");
+        let graph = build(&index, &kq_ncs::ActionTable::empty()).expect("build");
         assert!(
             graph.used_ids.contains(&lyt_id),
             "global m01aa.lyt must land in used_ids when end_m01aa is seeded; used_ids={:?}",
@@ -2983,7 +2982,7 @@ mod tests {
         .unwrap();
         index.reindex();
 
-        let graph = build(&index).unwrap();
+        let graph = build(&index, &kq_ncs::ActionTable::empty()).unwrap();
         let mentions: HashSet<&String> = graph.edges.values().flatten().collect();
         assert!(
             mentions.iter().any(|s| *s == "cm_baremetal"),
