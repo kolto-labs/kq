@@ -6,7 +6,7 @@ use kq_format::ncs::{Instruction, Ncs};
 
 pub use kq_index::Game;
 pub use kotor_ncs::{
-    analyze, cleanup, disasm_comment, emit_program, fallback_sub_body, format_float, split, BinOp,
+    analyze, cleanup, ActionSig, ActionTable, ParamSig, disasm_comment, emit_program, fallback_sub_body, format_float, split, BinOp,
     Block, BlockEnd, BuildError, Cfg, Const, CpDownTarget, Decompiled, DeferredRegion, ElseArm,
     EmitBody, Entry, Expr, GlobalTable, GlobalVar, GlobalsError, LocalStack, NameGen, Severity,
     SplitError, SplitProgram, StackError, Stmt, StructDef, StructId, StructTable, SubId, SubInfo,
@@ -21,17 +21,17 @@ fn map_game(game: Game) -> kotor_ncs::Game {
     }
 }
 
-pub fn decompile(ncs: &Ncs, game: Game) -> Decompiled {
-    kotor_ncs::decompile(ncs, map_game(game))
+pub fn decompile(ncs: &Ncs, game: Game, actions: &ActionTable) -> Decompiled {
+    kotor_ncs::decompile(ncs, map_game(game), actions)
 }
 
 pub fn infer_prototypes(
     ins: &[Instruction],
     split: &SplitProgram,
     cfgs: &HashMap<SubId, Cfg>,
-    game: Game,
+    actions: &ActionTable,
 ) -> (HashMap<SubId, SubInfo>, Vec<Warning>) {
-    kotor_ncs::infer_prototypes(ins, split, cfgs, map_game(game))
+    kotor_ncs::infer_prototypes(ins, split, cfgs, actions)
 }
 
 pub fn build_globals(
@@ -48,7 +48,7 @@ pub fn build_sub(
     cfg: &Cfg,
     globals: &GlobalTable,
     protos: &HashMap<SubId, SubInfo>,
-    game: Game,
+    actions: &ActionTable,
 ) -> Result<(Block, VarTable, StructTable), BuildError> {
-    kotor_ncs::build_sub(ins, sub, cfg, globals, protos, map_game(game))
+    kotor_ncs::build_sub(ins, sub, cfg, globals, protos, actions)
 }

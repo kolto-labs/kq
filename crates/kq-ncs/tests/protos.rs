@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use common::{asm, AsmArg};
 use kq_format::ncs::{Arg, Instruction};
-use kq_ncs::{analyze, infer_prototypes, split, Cfg, Game, SplitProgram, SubId, SubKind, Ty};
+use kq_ncs::{analyze, infer_prototypes, split, Cfg, SplitProgram, SubId, SubKind, Ty};
 
 use AsmArg::*;
 
@@ -29,7 +29,7 @@ fn cfgs_for(ins: &[Instruction], program: &SplitProgram) -> HashMap<SubId, Cfg> 
 fn infer(ins: &[Instruction]) -> (HashMap<SubId, kq_ncs::SubInfo>, Vec<kq_ncs::Warning>) {
     let program = split(ins).unwrap();
     let cfgs = cfgs_for(ins, &program);
-    infer_prototypes(ins, &program, &cfgs, Game::K1)
+    infer_prototypes(ins, &program, &cfgs, &kq_ncs::ActionTable::empty())
 }
 
 #[test]

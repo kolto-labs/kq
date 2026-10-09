@@ -211,6 +211,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 
 [[package]]
+name = "encoding_rs"
+version = "0.8.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -292,7 +301,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 [[package]]
 name = "kotor-diff"
 version = "0.1.0"
-source = "git+https://github.com/kolto-labs/kotor-formats?rev=8e537f845fe88d8a66d0ff3302dc072c10a2c4e7#8e537f845fe88d8a66d0ff3302dc072c10a2c4e7"
+source = "git+https://github.com/kolto-labs/kotor-formats?rev=f223b4f573e3b72a25d2ec5d606e101ddbb875ad#f223b4f573e3b72a25d2ec5d606e101ddbb875ad"
 dependencies = [
  "kotor-formats",
  "serde",
@@ -302,12 +311,12 @@ dependencies = [
 [[package]]
 name = "kotor-formats"
 version = "0.1.0"
-source = "git+https://github.com/kolto-labs/kotor-formats?rev=8e537f845fe88d8a66d0ff3302dc072c10a2c4e7#8e537f845fe88d8a66d0ff3302dc072c10a2c4e7"
+source = "git+https://github.com/kolto-labs/kotor-formats?rev=f223b4f573e3b72a25d2ec5d606e101ddbb875ad#f223b4f573e3b72a25d2ec5d606e101ddbb875ad"
 
 [[package]]
 name = "kotor-ncs"
 version = "0.1.0"
-source = "git+https://github.com/kolto-labs/kotor-formats?rev=8e537f845fe88d8a66d0ff3302dc072c10a2c4e7#8e537f845fe88d8a66d0ff3302dc072c10a2c4e7"
+source = "git+https://github.com/kolto-labs/kotor-formats?rev=f223b4f573e3b72a25d2ec5d606e101ddbb875ad#f223b4f573e3b72a25d2ec5d606e101ddbb875ad"
 dependencies = [
  "kotor-ncs-isa",
 ]
@@ -315,7 +324,7 @@ dependencies = [
 [[package]]
 name = "kotor-ncs-isa"
 version = "0.1.0"
-source = "git+https://github.com/kolto-labs/kotor-formats?rev=8e537f845fe88d8a66d0ff3302dc072c10a2c4e7#8e537f845fe88d8a66d0ff3302dc072c10a2c4e7"
+source = "git+https://github.com/kolto-labs/kotor-formats?rev=f223b4f573e3b72a25d2ec5d606e101ddbb875ad#f223b4f573e3b72a25d2ec5d606e101ddbb875ad"
 
 [[package]]
 name = "kq-cli"
@@ -339,6 +348,7 @@ name = "kq-format"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "encoding_rs",
  "kotor-diff",
  "kotor-formats",
  "kotor-ncs",

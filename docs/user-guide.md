@@ -109,7 +109,8 @@ Every listed path is relative to the install root. An archive
 
 `modules/end_m01aa.mod/end_trask.utc`, `data/2da.bif/appearance.2da`,
 `Override/appearance.2da`. `--from` still matches the container label
-(`end_m01aa.mod`, `data/2da.bif`), not that virtual path.
+(`end_m01aa.mod`, `data/2da.bif`), not that virtual path. A bare archive
+name (`2da.bif`) also works when only one container has that name.
 
 A *module* is usually `name.rim` + `name_s.rim` + `name_dlg.erf`, or one
 `name.mod` that replaces the trio. `-m danm13` selects that combined
@@ -183,7 +184,9 @@ not a git wrapper: the document is `kq-delta-1` (JSON Patch ops). `patch`
 applies that document. `merge` is a three-way merge; leftover conflicts are
 `_conflict` objects. Exit `5` means “they differ” or “unresolved conflicts”.
 
-`--from` matches the container label `which` prints.
+`--from` matches the container label `which` prints, or its bare file
+name when that is unambiguous (`--against 2da.bif`). A name that matches
+no container is an error that lists where the resource is.
 
 ### Search dialogue for a speaker
 
@@ -288,6 +291,12 @@ kq -i ~/kotor/modules/danm13.mod cat m13aa.git -f gron | rg Tag
 - **2DA** becomes an array of row objects. The row label is `_row`
   because it is not always the numeric index.
 - **TLK** becomes an array of `{ strref, text, sound? }` in StrRef order.
+  The text is decoded in the code page of the header's language id:
+  Windows-1252 for English, French, German, Italian and Spanish,
+  Windows-1250 for Polish, and the Windows code pages for Korean, Chinese
+  and Japanese. A table that claims a Western language but is mostly
+  Cyrillic (such as a Russian fan translation) is read as Windows-1251,
+  with a warning on stderr.
 - **NCS** becomes `{ declared_size, instructions: [{ offset, op, … }] }`.
   ACTION calls include `routine`, `name`, and `argc`.
 - **SSF** is a map of event name → StrRef (`-1` means no sound).
@@ -338,8 +347,8 @@ cheap parse.
 | 5 | `delta` found changes, or `merge` still has conflicts. |
 
 `grep` of a large install can skip individual corrupt resources (they
-do not crash the process). Retail K1 ships at least one 2DA PyKotor
-itself also refuses; those become per-file errors, not a panic.
+do not crash the process). Each one becomes a per-file error, not a panic.
+A 2DA that kq cannot read is always an error; kq never guesses at its rows.
 
 ## Limits (honest)
 

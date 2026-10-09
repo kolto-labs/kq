@@ -19,7 +19,7 @@ rayon = "1"
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 
 # One git ref for every crate from kotor-formats (Cargo resolves a git source once).
-kotor-ncs-isa = { git = "https://github.com/kolto-labs/kotor-formats", rev = "8e537f845fe88d8a66d0ff3302dc072c10a2c4e7" }
-kotor-ncs = { git = "https://github.com/kolto-labs/kotor-formats", rev = "8e537f845fe88d8a66d0ff3302dc072c10a2c4e7" }
-kotor-formats = { git = "https://github.com/kolto-labs/kotor-formats", rev = "8e537f845fe88d8a66d0ff3302dc072c10a2c4e7" }
-kotor-diff = { git = "https://github.com/kolto-labs/kotor-formats", rev = "8e537f845fe88d8a66d0ff3302dc072c10a2c4e7", features = ["json"] }
+kotor-ncs-isa = { git = "https://github.com/kolto-labs/kotor-formats", rev = "f223b4f573e3b72a25d2ec5d606e101ddbb875ad" }
+kotor-ncs = { git = "https://github.com/kolto-labs/kotor-formats", rev = "f223b4f573e3b72a25d2ec5d606e101ddbb875ad" }
+kotor-formats = { git = "https://github.com/kolto-labs/kotor-formats", rev = "f223b4f573e3b72a25d2ec5d606e101ddbb875ad" }
+kotor-diff = { git = "https://github.com/kolto-labs/kotor-formats", rev = "f223b4f573e3b72a25d2ec5d606e101ddbb875ad", features = ["json"] }
