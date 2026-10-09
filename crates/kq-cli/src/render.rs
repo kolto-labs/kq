@@ -57,14 +57,18 @@ pub fn decode_resource_mode(
     disasm: DisasmMode,
 ) -> Result<Decoded> {
     let mdx = companion_mdx(index, r);
-    decode_ex(
+    let mut decoded = decode_ex(
         bytes,
         mdx.as_deref(),
         Some(r.restype),
         &r.filename(),
         index.game,
         disasm,
-    )
+    )?;
+    if let (DisasmMode::On, Decoded::Value(v)) = (disasm, &mut decoded) {
+        crate::nwscript::name_routines(index, v);
+    }
+    Ok(decoded)
 }
 
 fn companion_mdx(index: &Index, r: &Resource) -> Option<Vec<u8>> {
