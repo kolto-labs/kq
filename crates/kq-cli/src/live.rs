@@ -333,6 +333,7 @@ pub fn build(index: &Index) -> Result<LiveGraph> {
     // One file at a time, resources in offset order. Nested rayon over a USB
     // mmap random-faults the same BIF and turned a ~30s scan into minutes.
     let groups = group_scan_ids_by_file(index, &scan_ids);
+    let actions = crate::nwscript::action_table(index);
     let mut hits = Vec::<(u32, HashSet<String>, HashSet<i64>, HashSet<String>)>::new();
     for (file_idx, ids) in &groups {
         let path = &index.files[*file_idx as usize];
@@ -359,6 +360,7 @@ pub fn build(index: &Index) -> Result<LiveGraph> {
                 &scope,
                 &module_roots,
                 &catalog,
+                &actions,
                 &mut mentions,
                 &mut strrefs,
                 &mut missing,
@@ -1080,6 +1082,7 @@ fn scan_bytes(
     scope: &Scope,
     module_roots: &HashSet<String>,
     catalog: &HashSet<String>,
+    actions: &kq_ncs::ActionTable,
     mentions: &mut HashSet<String>,
     strrefs: &mut HashSet<i64>,
     missing: &mut HashSet<String>,
@@ -1109,7 +1112,7 @@ fn scan_bytes(
         let Ok(n) = ncs::read(bytes, path) else {
             return;
         };
-        let d = kq_ncs::decompile(&n, index.game, &crate::nwscript::action_table(index));
+        let d = kq_ncs::decompile(&n, index.game, actions);
         let mut seen_inc = HashSet::new();
         take_nss_tree(
             &d.source,
