@@ -291,6 +291,12 @@ kq -i ~/kotor/modules/danm13.mod cat m13aa.git -f gron | rg Tag
 - **2DA** becomes an array of row objects. The row label is `_row`
   because it is not always the numeric index.
 - **TLK** becomes an array of `{ strref, text, sound? }` in StrRef order.
+  The text is decoded in the code page of the header's language id:
+  Windows-1252 for English, French, German, Italian and Spanish,
+  Windows-1250 for Polish, and the Windows code pages for Korean, Chinese
+  and Japanese. A table that claims a Western language but is mostly
+  Cyrillic (such as a Russian fan translation) is read as Windows-1251,
+  with a warning on stderr.
 - **NCS** becomes `{ declared_size, instructions: [{ offset, op, … }] }`.
   ACTION calls include `routine`, `name`, and `argc`.
 - **SSF** is a map of event name → StrRef (`-1` means no sound).
