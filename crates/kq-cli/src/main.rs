@@ -4,6 +4,7 @@ mod container;
 mod exit;
 mod filter;
 mod glob;
+mod nwscript;
 mod output;
 mod read;
 mod render;
@@ -40,6 +41,10 @@ pub struct Ctx {
     pub out: Out,
     pub use_cache: bool,
     pub refresh: bool,
+    /// `--nwscript FILE`, when given.
+    pub nwscript: Option<PathBuf>,
+    /// Engine function signatures, loaded once on first use.
+    pub actions: std::sync::OnceLock<Result<kq_ncs::ActionTable, String>>,
 }
 
 impl Ctx {
@@ -95,6 +100,11 @@ struct Cli {
         env = "KQ_INSTALL"
     )]
     install: Option<PathBuf>,
+
+    /// Path to the game's nwscript.nss. Decompiling and `cat --disasm` need
+    /// it unless --install points at an install that has one.
+    #[arg(long, global = true, value_name = "FILE")]
+    nwscript: Option<PathBuf>,
 
     /// Emit structured JSON (default). Use `--text` for human-readable output.
     #[arg(long, global = true, default_value_t = true)]
@@ -154,6 +164,8 @@ fn main() -> ExitCode {
         out: Out::new(cli.json && !cli.text, cli.text, cli.color),
         use_cache: !cli.no_cache,
         refresh: cli.refresh,
+        nwscript: cli.nwscript,
+        actions: Default::default(),
     };
 
     let result = match cli.command {

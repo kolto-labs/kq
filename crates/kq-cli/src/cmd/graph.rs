@@ -180,7 +180,18 @@ struct NamedReport<'a> {
 
 pub fn run(ctx: &Ctx, args: Args) -> Result<i32> {
     let index = ctx.index()?;
-    let graph = live::build(&index)?;
+    // Scripts are decompiled during the scan, which needs engine function names.
+    let empty = kq_ncs::ActionTable::empty();
+    let actions = if index
+        .resources
+        .iter()
+        .any(|r| r.restype.extension() == Some("ncs"))
+    {
+        crate::nwscript::table(ctx, Some(&index))?
+    } else {
+        &empty
+    };
+    let graph = live::build(&index, actions)?;
     let json = graph_wants_json(std::env::args());
     let loaded_map = live::scoped_loaded(&index);
     let hidden = live::overshadowed_id_set(&index, &loaded_map);

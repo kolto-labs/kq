@@ -11,7 +11,7 @@ use serde_json::Value as J;
 use kq_format::{bwm, gff, lip, ltr, mdl, ncs, ssf, text, tlk, tpc, twoda, wav, ResType};
 use kq_index::{Game, Index, Resource};
 
-use crate::read;
+use crate::{nwscript, read, Ctx};
 
 /// Whether NCS should stay bytecode (`On`) or become decompiled NSS (`Off`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,26 +45,34 @@ pub enum Decoded {
 }
 
 /// Decode a resource from the index, pairing binary MDL with its MDX companion.
-pub fn decode_resource(index: &Index, r: &Resource, bytes: &[u8]) -> Result<Decoded> {
-    decode_resource_mode(index, r, bytes, DisasmMode::Off)
+pub fn decode_resource(ctx: &Ctx, index: &Index, r: &Resource, bytes: &[u8]) -> Result<Decoded> {
+    decode_resource_mode(ctx, index, r, bytes, DisasmMode::Off)
 }
 
 /// Decode a resource, choosing NCS NSS vs instruction tree.
 pub fn decode_resource_mode(
+    ctx: &Ctx,
     index: &Index,
     r: &Resource,
     bytes: &[u8],
     disasm: DisasmMode,
 ) -> Result<Decoded> {
     let mdx = companion_mdx(index, r);
-    decode_ex(
+    let empty = kq_ncs::ActionTable::empty();
+    let actions = nwscript::for_type(ctx, Some(index), Some(r.restype))?.unwrap_or(&empty);
+    let mut decoded = decode_ex(
         bytes,
         mdx.as_deref(),
         Some(r.restype),
         &r.filename(),
         index.game,
+        actions,
         disasm,
-    )
+    )?;
+    if let (DisasmMode::On, Decoded::Value(v)) = (disasm, &mut decoded) {
+        nwscript::name_routines(actions, v);
+    }
+    Ok(decoded)
 }
 
 fn companion_mdx(index: &Index, r: &Resource) -> Option<Vec<u8>> {
@@ -86,8 +94,18 @@ fn companion_mdx(index: &Index, r: &Resource) -> Option<Vec<u8>> {
 
 /// Decode a resource. `restype` is a hint used only when sniffing is
 /// inconclusive.
-pub fn decode(bytes: &[u8], restype: Option<ResType>, name: &str) -> Result<Decoded> {
-    decode_ex(bytes, None, restype, name, Game::K1, DisasmMode::Off)
+pub fn decode(ctx: &Ctx, bytes: &[u8], restype: Option<ResType>, name: &str) -> Result<Decoded> {
+    let empty = kq_ncs::ActionTable::empty();
+    let actions = nwscript::for_type(ctx, None, restype)?.unwrap_or(&empty);
+    decode_ex(
+        bytes,
+        None,
+        restype,
+        name,
+        Game::K1,
+        actions,
+        DisasmMode::Off,
+    )
 }
 
 pub fn decode_with_mdx(
@@ -96,7 +114,15 @@ pub fn decode_with_mdx(
     restype: Option<ResType>,
     name: &str,
 ) -> Result<Decoded> {
-    decode_ex(bytes, mdx, restype, name, Game::K1, DisasmMode::Off)
+    decode_ex(
+        bytes,
+        mdx,
+        restype,
+        name,
+        Game::K1,
+        &kq_ncs::ActionTable::empty(),
+        DisasmMode::Off,
+    )
 }
 
 fn decode_ex(
@@ -105,6 +131,7 @@ fn decode_ex(
     restype: Option<ResType>,
     name: &str,
     game: Game,
+    actions: &kq_ncs::ActionTable,
     disasm: DisasmMode,
 ) -> Result<Decoded> {
     let path = std::path::Path::new(name);
@@ -142,7 +169,7 @@ fn decode_ex(
         if disasm == DisasmMode::On {
             return Ok(Decoded::Value(text::ncs_to_json(&n)));
         }
-        let d = kq_ncs::decompile(&n, game);
+        let d = kq_ncs::decompile(&n, game, actions);
         return Ok(Decoded::Text(d.source));
     }
     if bwm::sniff(bytes) {
@@ -298,6 +325,7 @@ mod tests {
             ncs,
             "t.ncs",
             Game::K1,
+            &kq_ncs::ActionTable::empty(),
             DisasmMode::Off,
         )
         .unwrap();
@@ -312,7 +340,16 @@ mod tests {
     #[test]
     fn cat_ncs_disasm_is_instruction_json_value() {
         let bytes = minimal_ncs_bytes();
-        let decoded = decode_ex(&bytes, None, None, "t.ncs", Game::K1, DisasmMode::On).unwrap();
+        let decoded = decode_ex(
+            &bytes,
+            None,
+            None,
+            "t.ncs",
+            Game::K1,
+            &kq_ncs::ActionTable::empty(),
+            DisasmMode::On,
+        )
+        .unwrap();
         match decoded {
             Decoded::Value(v) => assert!(v.get("instructions").is_some()),
             _ => panic!("expected Value"),

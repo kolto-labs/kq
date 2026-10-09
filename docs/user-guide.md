@@ -215,6 +215,10 @@ NCS is shown as a disassembly: constants, jumps, and engine calls with
 names from `nwscript` (`GetObjectByTag` is routine 200). This is **not**
 recovered source. It is enough to find a tag or a function.
 
+Engine function names come from the game's `nwscript.nss`, which kq does not
+ship. Pass `--nwscript FILE`, or `-i` to an install that has one. Without
+either, the command stops and says what to pass.
+
 `--ignore-case` has no short flag. `-i` is `--install` on every command.
 
 ### Search texture TXI strings
@@ -298,7 +302,8 @@ kq -i ~/kotor/modules/danm13.mod cat m13aa.git -f gron | rg Tag
   Cyrillic (such as a Russian fan translation) is read as Windows-1251,
   with a warning on stderr.
 - **NCS** becomes `{ declared_size, instructions: [{ offset, op, … }] }`.
-  ACTION calls include `routine`, `name`, and `argc`.
+  ACTION calls include `routine`, `name`, and `argc`. `name` comes from
+  `nwscript.nss` (see `--nwscript`).
 - **SSF** is a map of event name → StrRef (`-1` means no sound).
 - Plain text formats (`nss`, `lyt`, `vis`, `txi`) are line arrays in
   gron (`file.nss[12] = "…"`) and a single string in JSON.

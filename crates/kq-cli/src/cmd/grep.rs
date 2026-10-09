@@ -107,12 +107,20 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<i32> {
         selected.retain(|&i| is_searchable(index.resources[i as usize].restype));
     }
 
+    // Fail once, up front, instead of skipping every script in silence.
+    if selected
+        .iter()
+        .any(|&i| index.resources[i as usize].restype.extension() == Some("ncs"))
+    {
+        crate::nwscript::table(ctx, Some(&index))?;
+    }
+
     let mut results: Vec<ResourceMatches> = selected
         .par_iter()
         .filter_map(|&i| {
             let r = &index.resources[i as usize];
             let bytes = read::read(&index, r).ok()?;
-            let decoded = render::decode_resource(&index, r, &bytes).ok()?;
+            let decoded = render::decode_resource(ctx, &index, r, &bytes).ok()?;
             // A type with no decoder renders as one placeholder line that can
             // never match a pattern. --include-binary means "search the
             // actual bytes", so force them to text instead of rendering that

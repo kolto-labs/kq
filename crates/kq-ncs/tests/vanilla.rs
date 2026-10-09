@@ -62,7 +62,7 @@ fn k1_corpus_no_panic_nonempty() {
         let Ok(ncs) = kq_format::ncs::read(&bytes, Path::new("x.ncs")) else {
             continue;
         };
-        let d = kq_ncs::decompile(&ncs, index.game);
+        let d = kq_ncs::decompile(&ncs, index.game, &kq_ncs::ActionTable::empty());
         assert!(!d.source.is_empty(), "empty decompile for {}", r.filename());
         n += 1;
         if d.complete {
@@ -105,7 +105,7 @@ fn fixpoint_sample() {
         let Ok(ncs) = kq_format::ncs::read(&bytes, Path::new("x.ncs")) else {
             continue;
         };
-        let d = kq_ncs::decompile(&ncs, index.game);
+        let d = kq_ncs::decompile(&ncs, index.game, &kq_ncs::ActionTable::empty());
         if d.source.is_empty() {
             continue;
         }
@@ -140,7 +140,7 @@ fn fixpoint_sample() {
         let compiled = nss_path.with_extension("ncs");
         let bytes = std::fs::read(&compiled).unwrap();
         let ncs = kq_format::ncs::read(&bytes, &compiled).unwrap();
-        let s2 = kq_ncs::decompile(&ncs, index.game).source;
+        let s2 = kq_ncs::decompile(&ncs, index.game, &kq_ncs::ActionTable::empty()).source;
         assert_eq!(s1, &s2, "fixpoint mismatch for {}", nss_path.display());
     }
 

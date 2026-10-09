@@ -304,7 +304,7 @@ impl LiveGraph {
     }
 }
 
-pub fn build(index: &Index) -> Result<LiveGraph> {
+pub fn build(index: &Index, actions: &kq_ncs::ActionTable) -> Result<LiveGraph> {
     let catalog: HashSet<String> = index.resources.iter().map(|r| r.resref.clone()).collect();
     let module_roots: HashSet<String> = index
         .module_roots()
@@ -359,6 +359,7 @@ pub fn build(index: &Index) -> Result<LiveGraph> {
                 &scope,
                 &module_roots,
                 &catalog,
+                actions,
                 &mut mentions,
                 &mut strrefs,
                 &mut missing,
@@ -1080,6 +1081,7 @@ fn scan_bytes(
     scope: &Scope,
     module_roots: &HashSet<String>,
     catalog: &HashSet<String>,
+    actions: &kq_ncs::ActionTable,
     mentions: &mut HashSet<String>,
     strrefs: &mut HashSet<i64>,
     missing: &mut HashSet<String>,
@@ -1109,7 +1111,7 @@ fn scan_bytes(
         let Ok(n) = ncs::read(bytes, path) else {
             return;
         };
-        let d = kq_ncs::decompile(&n, index.game);
+        let d = kq_ncs::decompile(&n, index.game, actions);
         let mut seen_inc = HashSet::new();
         take_nss_tree(
             &d.source,
@@ -2154,7 +2156,7 @@ mod tests {
         let lyt_ty = ResType::from_extension("lyt").unwrap();
         let lyt_id = *loaded.get(&(None, "m01aa".into(), lyt_ty)).unwrap();
 
-        let graph = build(&index).expect("build");
+        let graph = build(&index, &kq_ncs::ActionTable::empty()).expect("build");
         assert!(
             graph.used_ids.contains(&lyt_id),
             "global m01aa.lyt must land in used_ids when end_m01aa is seeded; used_ids={:?}",
@@ -2980,7 +2982,7 @@ mod tests {
         .unwrap();
         index.reindex();
 
-        let graph = build(&index).unwrap();
+        let graph = build(&index, &kq_ncs::ActionTable::empty()).unwrap();
         let mentions: HashSet<&String> = graph.edges.values().flatten().collect();
         assert!(
             mentions.iter().any(|s| *s == "cm_baremetal"),
