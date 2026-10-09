@@ -119,6 +119,9 @@ fn decode_ex(
     }
     if tlk::sniff(bytes) {
         let t = tlk::read(bytes, path)?;
+        if let Some(note) = &t.encoding_note {
+            crate::output::warn(format!("{name}: {note}"));
+        }
         return Ok(Decoded::Value(text::tlk_to_json(&t)));
     }
     if ssf::sniff(bytes) {
