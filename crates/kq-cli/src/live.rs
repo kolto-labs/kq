@@ -1187,7 +1187,7 @@ fn scan_bytes(
         return;
     }
     if ext == Some("2da") || twoda::sniff(bytes) {
-        let Ok(t) = twoda::read_or_salvage(bytes, path) else {
+        let Ok(t) = twoda::read(bytes, path) else {
             return;
         };
         for label in &t.labels {

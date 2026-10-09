@@ -110,14 +110,7 @@ pub fn twoda_to_json(t: &TwoDa) -> J {
             J::Object(m)
         })
         .collect();
-    if t.warnings.is_empty() {
-        J::Array(rows)
-    } else {
-        let mut m = Map::new();
-        m.insert("_warnings".into(), json!(t.warnings));
-        m.insert("rows".into(), J::Array(rows));
-        J::Object(m)
-    }
+    J::Array(rows)
 }
 
 /// Convert a talk table to an array indexed by StrRef.
