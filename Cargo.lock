@@ -292,7 +292,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 [[package]]
 name = "kotor-diff"
 version = "0.1.0"
-source = "git+https://github.com/holowan-biolabs/kotor-formats?rev=8e537f845fe88d8a66d0ff3302dc072c10a2c4e7#8e537f845fe88d8a66d0ff3302dc072c10a2c4e7"
+source = "git+https://github.com/kolto-labs/kotor-formats?rev=8e537f845fe88d8a66d0ff3302dc072c10a2c4e7#8e537f845fe88d8a66d0ff3302dc072c10a2c4e7"
 dependencies = [
  "kotor-formats",
  "serde",
@@ -302,12 +302,12 @@ dependencies = [
 [[package]]
 name = "kotor-formats"
 version = "0.1.0"
-source = "git+https://github.com/holowan-biolabs/kotor-formats?rev=8e537f845fe88d8a66d0ff3302dc072c10a2c4e7#8e537f845fe88d8a66d0ff3302dc072c10a2c4e7"
+source = "git+https://github.com/kolto-labs/kotor-formats?rev=8e537f845fe88d8a66d0ff3302dc072c10a2c4e7#8e537f845fe88d8a66d0ff3302dc072c10a2c4e7"
 
 [[package]]
 name = "kotor-ncs"
 version = "0.1.0"
-source = "git+https://github.com/holowan-biolabs/kotor-formats?rev=8e537f845fe88d8a66d0ff3302dc072c10a2c4e7#8e537f845fe88d8a66d0ff3302dc072c10a2c4e7"
+source = "git+https://github.com/kolto-labs/kotor-formats?rev=8e537f845fe88d8a66d0ff3302dc072c10a2c4e7#8e537f845fe88d8a66d0ff3302dc072c10a2c4e7"
 dependencies = [
  "kotor-ncs-isa",
 ]
@@ -315,7 +315,7 @@ dependencies = [
 [[package]]
 name = "kotor-ncs-isa"
 version = "0.1.0"
-source = "git+https://github.com/holowan-biolabs/kotor-formats?rev=8e537f845fe88d8a66d0ff3302dc072c10a2c4e7#8e537f845fe88d8a66d0ff3302dc072c10a2c4e7"
+source = "git+https://github.com/kolto-labs/kotor-formats?rev=8e537f845fe88d8a66d0ff3302dc072c10a2c4e7#8e537f845fe88d8a66d0ff3302dc072c10a2c4e7"
 
 [[package]]
 name = "kq-cli"

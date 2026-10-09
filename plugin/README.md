@@ -1,6 +1,6 @@
 # kq agent plugin
 
-Teaches AI agents how to use the [kq](https://github.com/holowan-biolabs/kq) CLI
+Teaches AI agents how to use the [kq](https://github.com/kolto-labs/kq) CLI
 on a Knights of the Old Republic install: correct flags, resolve order, and
 decoded-text workflows.
 
