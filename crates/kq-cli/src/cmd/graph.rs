@@ -355,6 +355,7 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<i32> {
     Ok(exit::OK)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_json(
     ctx: &Ctx,
     index: &kq_index::Index,
@@ -610,11 +611,7 @@ fn print_tree(
     Ok(())
 }
 
-fn write_quiet(
-    used: &[String],
-    unused: &[String],
-    include_used: bool,
-) -> Result<i32> {
+fn write_quiet(used: &[String], unused: &[String], include_used: bool) -> Result<i32> {
     let stdout = std::io::stdout();
     let mut w = BufWriter::new(stdout.lock());
     if include_used {
@@ -706,6 +703,7 @@ fn sorted_set(set: Option<&HashSet<String>>) -> Vec<String> {
     .unwrap_or_default()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn show_named(
     ctx: &Ctx,
     index: &kq_index::Index,
@@ -834,6 +832,7 @@ fn write_list_sections(w: &mut impl Write, text: &str) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_inventory(
     w: &mut impl Write,
     used_count: usize,
@@ -851,45 +850,29 @@ fn write_inventory(
     )?;
     w.flush()?;
 
-    let mut wrote_section = false;
     if include_used_list && !used.is_empty() {
         writeln!(w)?;
         writeln!(w, "Used ({})", used.len())?;
         for path in apply_limit_slice(used, limit) {
             writeln!(w, "  {path}")?;
         }
-        wrote_section = true;
     }
     if !unused.is_empty() {
-        if wrote_section {
-            writeln!(w)?;
-        } else {
-            writeln!(w)?;
-        }
+        writeln!(w)?;
         writeln!(w, "Unused ({})", unused.len())?;
         for path in apply_limit_slice(unused, limit) {
             writeln!(w, "  {path}")?;
         }
-        wrote_section = true;
     }
     if !overshadowed.is_empty() {
-        if wrote_section {
-            writeln!(w)?;
-        } else {
-            writeln!(w)?;
-        }
+        writeln!(w)?;
         writeln!(w, "Overshadowed ({})", overshadowed.len())?;
         for (path, hidden) in apply_limit_slice(overshadowed, limit) {
             writeln!(w, "  {path}  (hidden by {hidden})")?;
         }
-        wrote_section = true;
     }
     if !unused_talk.is_empty() {
-        if wrote_section {
-            writeln!(w)?;
-        } else {
-            writeln!(w)?;
-        }
+        writeln!(w)?;
         writeln!(w, "Unused talk ({})", unused_talk.len())?;
         for (strref, line) in apply_limit_slice(unused_talk, limit) {
             writeln!(w, "  {strref}  {line}")?;
@@ -948,9 +931,8 @@ fn leftover_ids(
 ) -> Result<Vec<u32>> {
     let loaded: HashSet<u32> = loaded_map.values().copied().collect();
     let mut candidates = candidate_ids(index, filter, no_assets)?;
-    candidates.retain(|&i| {
-        loaded.contains(&i) && !graph.used_ids.contains(&i) && !hidden.contains(&i)
-    });
+    candidates
+        .retain(|&i| loaded.contains(&i) && !graph.used_ids.contains(&i) && !hidden.contains(&i));
     // Install-level unused list: if *any* scope's copy was reached, other
     // modules' packed copies of the same ResRef+type are not "dead content"
     // for the inventory report (they are packing waste). Per-copy status on
@@ -1008,8 +990,8 @@ fn resource_row<'a>(
             v
         })
         .unwrap_or_default();
-    let hidden_by =
-        live::overshadowed_by(index, loaded, id).map(|p| index.virt_path(&index.resources[p as usize]));
+    let hidden_by = live::overshadowed_by(index, loaded, id)
+        .map(|p| index.virt_path(&index.resources[p as usize]));
     Row {
         id,
         name: r.filename(),
@@ -1399,15 +1381,8 @@ mod tests {
         };
         let loaded = live::scoped_loaded(&index);
         let hidden = live::overshadowed_id_set(&index, &loaded);
-        let unused = leftover_ids(
-            &index,
-            &graph,
-            &loaded,
-            &hidden,
-            &Filter::default(),
-            false,
-        )
-        .unwrap();
+        let unused =
+            leftover_ids(&index, &graph, &loaded, &hidden, &Filter::default(), false).unwrap();
         assert!(
             !unused.contains(&1),
             "module packing of a reached script is not unused; got {unused:?}"
@@ -1458,15 +1433,8 @@ mod tests {
         };
         let loaded = live::scoped_loaded(&index);
         let hidden = live::overshadowed_id_set(&index, &loaded);
-        let unused = leftover_ids(
-            &index,
-            &graph,
-            &loaded,
-            &hidden,
-            &Filter::default(),
-            false,
-        )
-        .unwrap();
+        let unused =
+            leftover_ids(&index, &graph, &loaded, &hidden, &Filter::default(), false).unwrap();
         assert!(
             !unused.contains(&1),
             "b.mod/shared.ncs packing sibling of used copy must not list as unused"
@@ -1497,15 +1465,8 @@ mod tests {
         };
         let loaded = live::scoped_loaded(&index);
         let hidden = live::overshadowed_id_set(&index, &loaded);
-        let unused = leftover_ids(
-            &index,
-            &graph,
-            &loaded,
-            &hidden,
-            &Filter::default(),
-            false,
-        )
-        .unwrap();
+        let unused =
+            leftover_ids(&index, &graph, &loaded, &hidden, &Filter::default(), false).unwrap();
         assert!(
             !unused.contains(&0),
             "overshadowed module copy is not unused"
@@ -1586,8 +1547,7 @@ mod tests {
         )];
         let talk = vec![(12345i64, "Some leftover line".into())];
         let mut buf = Vec::new();
-        write_inventory(&mut buf, 1, &used, &unused, &overshadowed, &talk, false, 0)
-            .unwrap();
+        write_inventory(&mut buf, 1, &used, &unused, &overshadowed, &talk, false, 0).unwrap();
         let got = String::from_utf8(buf).unwrap();
         let expect = format_inventory_text(&used, &unused, &overshadowed, &talk, false, 0);
         assert_eq!(got, expect);

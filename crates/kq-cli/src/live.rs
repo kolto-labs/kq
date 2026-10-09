@@ -469,10 +469,7 @@ pub fn resource_scope(index: &Index, r: &kq_index::Resource) -> Scope {
     let source = index.source(r);
     // Prefer an explicit module_root (module capsules and lips/NAME_loc.mod —
     // engine `LIPS:NAME_loc` is registered with the module).
-    source
-        .module_root
-        .as_ref()
-        .map(|s| s.to_ascii_lowercase())
+    source.module_root.as_ref().map(|s| s.to_ascii_lowercase())
 }
 
 /// Lowest precedence id per (scope, resref, restype).
@@ -523,7 +520,7 @@ pub fn overshadowed_by(
     if loaded_id != id {
         return Some(loaded_id);
     }
-        if scope.is_some() {
+    if scope.is_some() {
         if let Some(&ov) = loaded.get(&(None, r.resref.clone(), r.restype)) {
             if index.source(&index.resources[ov as usize]).kind == kq_index::SourceKind::Override {
                 return Some(ov);
@@ -665,11 +662,7 @@ fn seed_ids(
 
     match index.kind {
         RootKind::Install => {
-            for name in ENGINE_ALWAYS
-                .iter()
-                .chain(ENGINE_2DAS)
-                .chain(ENGINE_GUIS)
-            {
+            for name in ENGINE_ALWAYS.iter().chain(ENGINE_2DAS).chain(ENGINE_GUIS) {
                 push_resref(name, &mut labels, &mut ids);
             }
             for name in K1_SCRIPTS {
@@ -930,10 +923,9 @@ fn parse_include_line(line: &str) -> Option<String> {
     let rest = rest.trim_start();
     let (inner, _) = if let Some(s) = rest.strip_prefix('"') {
         s.split_once('"')?
-    } else if let Some(s) = rest.strip_prefix('<') {
-        s.split_once('>')?
     } else {
-        return None;
+        let s = rest.strip_prefix('<')?;
+        s.split_once('>')?
     };
     let name = inner
         .trim()
@@ -992,6 +984,7 @@ fn nss_source(
     Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn take_nss_tree(
     src: &str,
     index: &Index,
@@ -1072,6 +1065,7 @@ fn add_are_layout_edges(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn scan_bytes(
     bytes: &[u8],
     r: &kq_index::Resource,
@@ -1262,6 +1256,7 @@ fn scan_bytes(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn walk_gff_struct(
     s: &GffStruct,
     index: &Index,
@@ -1332,6 +1327,7 @@ fn is_engine_resref_field(label: &str) -> bool {
         || label.starts_with("Mod_On")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn walk_gff_value(
     v: &GffValue,
     key: Option<&str>,
@@ -1350,7 +1346,7 @@ fn walk_gff_value(
 ) {
     match v {
         GffValue::Str(s) => {
-            if key.is_some_and(|k| is_engine_resref_field(k)) {
+            if key.is_some_and(is_engine_resref_field) {
                 // One ResRef cell — do not prose-split; allow self ResRef so
                 // Conversation/VO_ResRef matching the owner name still resolve
                 // to .dlg / .lip / .ncs of that name.
@@ -1384,7 +1380,10 @@ fn walk_gff_value(
                 );
             }
         }
-        GffValue::LocString { strref, substrings: _ } => {
+        GffValue::LocString {
+            strref,
+            substrings: _,
+        } => {
             // Spoken/UI text is not a ResRef source. Tokenizing it is what
             // made a K1 graph scan take hours (`the` / `because` through
             // resolve_in_scope). The talk-table index is the only live edge.
@@ -1438,6 +1437,7 @@ fn walk_gff_value(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_arguments)]
 fn collect(
     decoded: &crate::render::Decoded,
     index: &Index,
@@ -1471,7 +1471,8 @@ fn collect(
             };
             // CONSTS-only until ACTION-aware ResRef edges land with DeNCS.
             if self_ext == Some("ncs")
-                || v.get("instructions").is_some_and(serde_json::Value::is_array)
+                || v.get("instructions")
+                    .is_some_and(serde_json::Value::is_array)
             {
                 walk_ncs_consts(v, &mut w);
             } else {
@@ -1633,6 +1634,7 @@ fn parse_strref(s: &str) -> Option<i64> {
     Some(n)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn take_tokens(
     s: &str,
     index: &Index,
@@ -1692,6 +1694,7 @@ fn looks_like_resref_token(tok: &str) -> bool {
     tok.contains('_') || tok.contains('.') || tok.bytes().any(|b| b.is_ascii_digit())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn consider_token(
     tok: &str,
     index: &Index,
@@ -1789,13 +1792,13 @@ mod tests {
         index.resources.iter().map(|r| r.resref.clone()).collect()
     }
 
-    fn global_lookup(
-        resrefs: &[&str],
-    ) -> (
+    type GlobalLookup = (
         Index,
         HashMap<(Scope, String, ResType), u32>,
         HashMap<String, Vec<u32>>,
-    ) {
+    );
+
+    fn global_lookup(resrefs: &[&str]) -> GlobalLookup {
         use serde_json::json;
         let ncs = ResType::from_extension("ncs").unwrap().0;
         let resources: Vec<serde_json::Value> = resrefs
@@ -2704,7 +2707,18 @@ mod tests {
         let roots = HashSet::new();
         let mut out = HashSet::new();
         consider_token(
-            "3", &index, &loaded, &entries, &None, &roots, &catalog_of(&index), "x", None, &mut out, None, false,
+            "3",
+            &index,
+            &loaded,
+            &entries,
+            &None,
+            &roots,
+            &catalog_of(&index),
+            "x",
+            None,
+            &mut out,
+            None,
+            false,
         );
         assert!(out.is_empty());
     }
@@ -2880,7 +2894,9 @@ mod tests {
         assert!(!body.contains("dead"));
         assert!(!body.contains("k_inc_generic"));
         assert_eq!(incs, vec!["k_inc_generic".to_string()]);
-        assert!(parse_include_line("#include \"k_inc_switch.nss\"").as_deref() == Some("k_inc_switch"));
+        assert!(
+            parse_include_line("#include \"k_inc_switch.nss\"").as_deref() == Some("k_inc_switch")
+        );
     }
 
     #[test]

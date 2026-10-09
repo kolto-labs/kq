@@ -227,11 +227,10 @@ fn matching_lines(projected: &str, re: &regex::Regex, context: usize) -> Vec<Ren
         .into_iter()
         .zip(matches)
         .zip(included)
-        .filter_map(|((text, matched), included)| {
-            included.then(|| RenderedLine {
-                text: text.to_string(),
-                matched,
-            })
+        .filter(|&((_, _), included)| included)
+        .map(|((text, matched), _)| RenderedLine {
+            text: text.to_string(),
+            matched,
         })
         .collect()
 }
@@ -358,10 +357,7 @@ mod tests {
     fn old_copy_flag_is_rejected() {
         let flag = concat!("--", "winn", "er", "s");
         let parsed = crate::Cli::try_parse_from(["kq", "grep", "ActionUseSkill", flag]);
-        assert!(
-            parsed.is_err(),
-            "kq grep {flag} must clap-error, not alias"
-        );
+        assert!(parsed.is_err(), "kq grep {flag} must clap-error, not alias");
     }
 
     #[test]
