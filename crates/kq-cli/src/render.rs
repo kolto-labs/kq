@@ -114,7 +114,7 @@ fn decode_ex(
         return Ok(Decoded::Value(text::gff_to_json(&g)));
     }
     if twoda::sniff(bytes) {
-        let t = twoda::read_or_salvage(bytes, path)?;
+        let t = twoda::read(bytes, path)?;
         return Ok(Decoded::Value(text::twoda_to_json(&t)));
     }
     if tlk::sniff(bytes) {
