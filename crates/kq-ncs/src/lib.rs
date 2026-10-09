@@ -4,15 +4,15 @@ use std::collections::HashMap;
 
 use kq_format::ncs::{Instruction, Ncs};
 
-pub use kq_index::Game;
 pub use kotor_ncs::{
-    analyze, cleanup, ActionSig, ActionTable, ParamSig, disasm_comment, emit_program, fallback_sub_body, format_float, split, BinOp,
-    Block, BlockEnd, BuildError, Cfg, Const, CpDownTarget, Decompiled, DeferredRegion, ElseArm,
-    EmitBody, Entry, Expr, GlobalTable, GlobalVar, GlobalsError, LocalStack, NameGen, Severity,
-    SplitError, SplitProgram, StackError, Stmt, StructDef, StructId, StructTable, SubId, SubInfo,
-    SubKind, SubRange, SubReport, SubStatus, SwitchCase, Ty, UnaryOp, Var, VarId, VarKind,
-    VarTable, Warning,
+    analyze, cleanup, disasm_comment, emit_program, fallback_sub_body, format_float, split,
+    ActionSig, ActionTable, BinOp, Block, BlockEnd, BuildError, Cfg, Const, CpDownTarget,
+    Decompiled, DeferredRegion, ElseArm, EmitBody, Entry, Expr, GlobalTable, GlobalVar,
+    GlobalsError, LocalStack, NameGen, ParamSig, Severity, SplitError, SplitProgram, StackError,
+    Stmt, StructDef, StructId, StructTable, SubId, SubInfo, SubKind, SubRange, SubReport,
+    SubStatus, SwitchCase, Ty, UnaryOp, Var, VarId, VarKind, VarTable, Warning,
 };
+pub use kq_index::Game;
 
 fn map_game(game: Game) -> kotor_ncs::Game {
     match game {

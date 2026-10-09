@@ -132,7 +132,7 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<i32> {
     } else {
         DisasmMode::Off
     };
-    let decoded = render::decode_resource_mode(&index, resource, &bytes, disasm)?;
+    let decoded = render::decode_resource_mode(ctx, &index, resource, &bytes, disasm)?;
 
     if format == Format::Json {
         let report = resource_json::build_resource_json(&index, resource, &decoded);

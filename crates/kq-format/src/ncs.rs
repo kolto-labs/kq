@@ -19,10 +19,18 @@ pub fn sniff(data: &[u8]) -> bool {
 }
 
 pub fn read(data: &[u8], path: &Path) -> Result<Ncs> {
-    kotor_ncs::read(data).map_err(|e| FormatError::Malformed {
+    let mut ncs = kotor_ncs::read(data).map_err(|e| FormatError::Malformed {
         path: path.to_path_buf(),
         message: e.message,
-    })
+    })?;
+    for instruction in &mut ncs.instructions {
+        if let Some(routine) = instruction.routine {
+            if let Some(name) = crate::ncs_actions::name(routine) {
+                instruction.routine_name = Some(name);
+            }
+        }
+    }
+    Ok(ncs)
 }
 
 #[cfg(test)]

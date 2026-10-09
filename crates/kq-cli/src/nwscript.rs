@@ -1,74 +1,88 @@
-//! Engine function names, read at runtime from the install's own `nwscript.nss`.
+//! Engine function names and signatures, read at runtime from a `nwscript.nss`
+//! the user supplies.
 //!
-//! kq does not ship BioWare's script. The game's copy is the only source, so
-//! an ACTION routine id is named only when the install being queried has one.
+//! kq does not ship BioWare's script. It comes from `--nwscript FILE`, or
+//! from the install named by `--install`, found the way the engine finds it:
+//! `Override` first, then the game's archives.
 
-use regex::Regex;
+use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value as J;
 
 use kq_format::ResType;
 use kq_index::Index;
+use kq_ncs::ActionTable;
 
-use crate::read;
+use crate::{read, Ctx};
 
-/// Prototype names in declaration order. The position is the ACTION routine id.
-pub fn parse_action_names(src: &str) -> Vec<String> {
-    let block = Regex::new(r"(?s)/\*.*?\*/").unwrap();
-    let line = Regex::new(r"//[^\n]*").unwrap();
-    let proto = Regex::new(
-        r"^\s*(?:void|int|float|string|object|effect|event|location|talent|vector|action|itemproperty)\s+(\w+)\s*\(",
-    )
-    .unwrap();
-    let code = line
-        .replace_all(&block.replace_all(src, ""), "")
-        .into_owned();
-    code.split(';')
-        .filter_map(|stmt| proto.captures(stmt).map(|c| c[1].to_string()))
-        .collect()
+const NEED: &str = "kq needs nwscript.nss for engine function names and does not ship it. \
+Pass --nwscript <file>, or --install <path> to an install that has one";
+
+/// The table for `restype`, or `None` when it is not an NCS and needs none.
+pub fn for_type<'a>(
+    ctx: &'a Ctx,
+    index: Option<&Index>,
+    restype: Option<ResType>,
+) -> Result<Option<&'a ActionTable>> {
+    if restype.and_then(|t| t.extension()) != Some("ncs") {
+        return Ok(None);
+    }
+    table(ctx, index).map(Some)
 }
 
-/// Names from the `nwscript.nss` the engine would load, or `None` if the
-/// install has none.
-pub fn action_names(index: &Index) -> Option<Vec<String>> {
-    let nss = ResType::from_extension("nss")?;
-    let r = index.resolve("nwscript", Some(nss))?;
-    let bytes = read::read(index, r).ok()?;
-    let names = parse_action_names(&String::from_utf8_lossy(&bytes));
-    (!names.is_empty()).then_some(names)
+/// Signatures from `--nwscript`, else from the install's own `nwscript.nss`.
+/// Parsed once per run.
+pub fn table<'a>(ctx: &'a Ctx, index: Option<&Index>) -> Result<&'a ActionTable> {
+    ctx.actions
+        .get_or_init(|| load(ctx, index).map_err(|e| format!("{e:#}")))
+        .as_ref()
+        .map_err(|e| anyhow!("{e}"))
 }
 
-/// Signatures from the install's `nwscript.nss`. Empty when it has none, so
-/// ACTION calls then stay disassembly comments.
-pub fn action_table(index: &Index) -> kq_ncs::ActionTable {
-    let Some(nss) = ResType::from_extension("nss") else {
-        return kq_ncs::ActionTable::empty();
+fn load(ctx: &Ctx, index: Option<&Index>) -> Result<ActionTable> {
+    if let Some(file) = &ctx.nwscript {
+        let src = std::fs::read(file).with_context(|| format!("cannot read {}", file.display()))?;
+        return parse(&src).with_context(|| file.display().to_string());
+    }
+    let opened;
+    let index = match index {
+        Some(i) => i,
+        None => {
+            opened = ctx.index().map_err(|_| anyhow!(NEED))?;
+            &opened
+        }
     };
+    let nss = ResType::from_extension("nss").context("no nss resource type")?;
     let Some(r) = index.resolve("nwscript", Some(nss)) else {
-        return kq_ncs::ActionTable::empty();
+        bail!(
+            "{} has no nwscript.nss in Override or the game archives. \
+             Pass --nwscript <file>",
+            index.root.display()
+        );
     };
-    match read::read(index, r) {
-        Ok(bytes) => kq_ncs::ActionTable::from_nwscript(&String::from_utf8_lossy(&bytes)),
-        Err(_) => kq_ncs::ActionTable::empty(),
-    }
+    let src = read::read(index, r)?;
+    parse(&src).with_context(|| format!("{}: nwscript.nss", index.root.display()))
 }
 
-/// Put the install's function names on the `routine` entries of a decoded NCS.
-pub fn name_routines(index: &Index, ncs_json: &mut J) {
-    let Some(list) = ncs_json.get_mut("instructions").and_then(J::as_array_mut) else {
-        return;
-    };
-    if !list.iter().any(|ins| ins.get("routine").is_some()) {
-        return;
+fn parse(src: &[u8]) -> Result<ActionTable> {
+    let table = ActionTable::from_nwscript(&String::from_utf8_lossy(src));
+    if table.is_empty() {
+        bail!("no engine function prototypes found; is this the game's nwscript.nss?");
     }
-    let Some(names) = action_names(index) else {
+    Ok(table)
+}
+
+/// Put function names on the `routine` entries of a decoded NCS.
+pub fn name_routines(table: &ActionTable, ncs_json: &mut J) {
+    let Some(list) = ncs_json.get_mut("instructions").and_then(J::as_array_mut) else {
         return;
     };
     for ins in list {
         let Some(id) = ins.get("routine").and_then(J::as_u64) else {
             continue;
         };
-        if let (Some(name), Some(obj)) = (names.get(id as usize), ins.as_object_mut()) {
-            obj.insert("name".into(), J::String(name.clone()));
+        let name = u16::try_from(id).ok().and_then(|id| table.get(id));
+        if let (Some(sig), Some(obj)) = (name, ins.as_object_mut()) {
+            obj.insert("name".into(), J::String(sig.name.clone()));
         }
     }
 }
