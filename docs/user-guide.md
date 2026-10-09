@@ -341,8 +341,8 @@ cheap parse.
 | 5 | `delta` found changes, or `merge` still has conflicts. |
 
 `grep` of a large install can skip individual corrupt resources (they
-do not crash the process). Retail K1 ships at least one 2DA PyKotor
-itself also refuses; those become per-file errors, not a panic.
+do not crash the process). Each one becomes a per-file error, not a panic.
+A 2DA that kq cannot read is always an error; kq never guesses at its rows.
 
 ## Limits (honest)
 
