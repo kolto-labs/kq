@@ -289,15 +289,7 @@ mod tests {
     fn cat_ncs_defaults_to_nss_text() {
         let bytes = minimal_ncs_bytes();
         let ncs = ResType::from_extension("ncs");
-        let decoded = decode_ex(
-            &bytes,
-            None,
-            ncs,
-            "t.ncs",
-            Game::K1,
-            DisasmMode::Off,
-        )
-        .unwrap();
+        let decoded = decode_ex(&bytes, None, ncs, "t.ncs", Game::K1, DisasmMode::Off).unwrap();
         match decoded {
             Decoded::Text(s) => {
                 assert!(s.contains("StartingConditional") || s.contains("main") || s.contains("/*"))

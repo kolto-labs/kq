@@ -599,11 +599,7 @@ fn print_tree(
     Ok(())
 }
 
-fn write_quiet(
-    used: &[String],
-    unused: &[String],
-    include_used: bool,
-) -> Result<i32> {
+fn write_quiet(used: &[String], unused: &[String], include_used: bool) -> Result<i32> {
     let stdout = std::io::stdout();
     let mut w = BufWriter::new(stdout.lock());
     if include_used {
@@ -937,9 +933,8 @@ fn leftover_ids(
 ) -> Result<Vec<u32>> {
     let loaded: HashSet<u32> = loaded_map.values().copied().collect();
     let mut candidates = candidate_ids(index, filter, no_assets)?;
-    candidates.retain(|&i| {
-        loaded.contains(&i) && !graph.used_ids.contains(&i) && !hidden.contains(&i)
-    });
+    candidates
+        .retain(|&i| loaded.contains(&i) && !graph.used_ids.contains(&i) && !hidden.contains(&i));
     // Install-level unused list: if *any* scope's copy was reached, other
     // modules' packed copies of the same ResRef+type are not "dead content"
     // for the inventory report (they are packing waste). Per-copy status on
@@ -997,8 +992,8 @@ fn resource_row<'a>(
             v
         })
         .unwrap_or_default();
-    let hidden_by =
-        live::overshadowed_by(index, loaded, id).map(|p| index.virt_path(&index.resources[p as usize]));
+    let hidden_by = live::overshadowed_by(index, loaded, id)
+        .map(|p| index.virt_path(&index.resources[p as usize]));
     Row {
         id,
         name: r.filename(),
@@ -1388,15 +1383,8 @@ mod tests {
         };
         let loaded = live::scoped_loaded(&index);
         let hidden = live::overshadowed_id_set(&index, &loaded);
-        let unused = leftover_ids(
-            &index,
-            &graph,
-            &loaded,
-            &hidden,
-            &Filter::default(),
-            false,
-        )
-        .unwrap();
+        let unused =
+            leftover_ids(&index, &graph, &loaded, &hidden, &Filter::default(), false).unwrap();
         assert!(
             !unused.contains(&1),
             "module packing of a reached script is not unused; got {unused:?}"
@@ -1447,15 +1435,8 @@ mod tests {
         };
         let loaded = live::scoped_loaded(&index);
         let hidden = live::overshadowed_id_set(&index, &loaded);
-        let unused = leftover_ids(
-            &index,
-            &graph,
-            &loaded,
-            &hidden,
-            &Filter::default(),
-            false,
-        )
-        .unwrap();
+        let unused =
+            leftover_ids(&index, &graph, &loaded, &hidden, &Filter::default(), false).unwrap();
         assert!(
             !unused.contains(&1),
             "b.mod/shared.ncs packing sibling of used copy must not list as unused"
@@ -1486,15 +1467,8 @@ mod tests {
         };
         let loaded = live::scoped_loaded(&index);
         let hidden = live::overshadowed_id_set(&index, &loaded);
-        let unused = leftover_ids(
-            &index,
-            &graph,
-            &loaded,
-            &hidden,
-            &Filter::default(),
-            false,
-        )
-        .unwrap();
+        let unused =
+            leftover_ids(&index, &graph, &loaded, &hidden, &Filter::default(), false).unwrap();
         assert!(
             !unused.contains(&0),
             "overshadowed module copy is not unused"
@@ -1575,8 +1549,7 @@ mod tests {
         )];
         let talk = vec![(12345i64, "Some leftover line".into())];
         let mut buf = Vec::new();
-        write_inventory(&mut buf, 1, &used, &unused, &overshadowed, &talk, false, 0)
-            .unwrap();
+        write_inventory(&mut buf, 1, &used, &unused, &overshadowed, &talk, false, 0).unwrap();
         let got = String::from_utf8(buf).unwrap();
         let expect = format_inventory_text(&used, &unused, &overshadowed, &talk, false, 0);
         assert_eq!(got, expect);

@@ -350,10 +350,7 @@ mod tests {
     fn old_copy_flag_is_rejected() {
         let flag = concat!("--", "winn", "er", "s");
         let parsed = crate::Cli::try_parse_from(["kq", "grep", "ActionUseSkill", flag]);
-        assert!(
-            parsed.is_err(),
-            "kq grep {flag} must clap-error, not alias"
-        );
+        assert!(parsed.is_err(), "kq grep {flag} must clap-error, not alias");
     }
 
     #[test]

@@ -468,10 +468,7 @@ pub fn resource_scope(index: &Index, r: &kq_index::Resource) -> Scope {
     let source = index.source(r);
     // Prefer an explicit module_root (module capsules and lips/NAME_loc.mod —
     // engine `LIPS:NAME_loc` is registered with the module).
-    source
-        .module_root
-        .as_ref()
-        .map(|s| s.to_ascii_lowercase())
+    source.module_root.as_ref().map(|s| s.to_ascii_lowercase())
 }
 
 /// Lowest precedence id per (scope, resref, restype).
@@ -522,7 +519,7 @@ pub fn overshadowed_by(
     if loaded_id != id {
         return Some(loaded_id);
     }
-        if scope.is_some() {
+    if scope.is_some() {
         if let Some(&ov) = loaded.get(&(None, r.resref.clone(), r.restype)) {
             if index.source(&index.resources[ov as usize]).kind == kq_index::SourceKind::Override {
                 return Some(ov);
@@ -664,11 +661,7 @@ fn seed_ids(
 
     match index.kind {
         RootKind::Install => {
-            for name in ENGINE_ALWAYS
-                .iter()
-                .chain(ENGINE_2DAS)
-                .chain(ENGINE_GUIS)
-            {
+            for name in ENGINE_ALWAYS.iter().chain(ENGINE_2DAS).chain(ENGINE_GUIS) {
                 push_resref(name, &mut labels, &mut ids);
             }
             for name in K1_SCRIPTS {
@@ -1382,7 +1375,10 @@ fn walk_gff_value(
                 );
             }
         }
-        GffValue::LocString { strref, substrings: _ } => {
+        GffValue::LocString {
+            strref,
+            substrings: _,
+        } => {
             // Spoken/UI text is not a ResRef source. Tokenizing it is what
             // made a K1 graph scan take hours (`the` / `because` through
             // resolve_in_scope). The talk-table index is the only live edge.
@@ -1469,7 +1465,8 @@ fn collect(
             };
             // CONSTS-only until ACTION-aware ResRef edges land with DeNCS.
             if self_ext == Some("ncs")
-                || v.get("instructions").is_some_and(serde_json::Value::is_array)
+                || v.get("instructions")
+                    .is_some_and(serde_json::Value::is_array)
             {
                 walk_ncs_consts(v, &mut w);
             } else {
@@ -2702,7 +2699,18 @@ mod tests {
         let roots = HashSet::new();
         let mut out = HashSet::new();
         consider_token(
-            "3", &index, &loaded, &entries, &None, &roots, &catalog_of(&index), "x", None, &mut out, None, false,
+            "3",
+            &index,
+            &loaded,
+            &entries,
+            &None,
+            &roots,
+            &catalog_of(&index),
+            "x",
+            None,
+            &mut out,
+            None,
+            false,
         );
         assert!(out.is_empty());
     }
@@ -2878,7 +2886,9 @@ mod tests {
         assert!(!body.contains("dead"));
         assert!(!body.contains("k_inc_generic"));
         assert_eq!(incs, vec!["k_inc_generic".to_string()]);
-        assert!(parse_include_line("#include \"k_inc_switch.nss\"").as_deref() == Some("k_inc_switch"));
+        assert!(
+            parse_include_line("#include \"k_inc_switch.nss\"").as_deref() == Some("k_inc_switch")
+        );
     }
 
     #[test]

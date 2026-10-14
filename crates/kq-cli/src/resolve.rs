@@ -109,7 +109,11 @@ mod tests {
         // Parent is NOT an install root (no chitin.key at parent).
         let target = resolve_explicit(root.path()).unwrap();
         match target {
-            Target::Install(p) => assert_eq!(p, steam.canonicalize().unwrap_or(steam)),
+            // Compare canonical forms: macOS tempdirs live under a /var
+            // symlink and Windows canonicalize adds a \\?\ prefix.
+            Target::Install(p) => {
+                assert_eq!(p.canonicalize().unwrap(), steam.canonicalize().unwrap())
+            }
             _ => panic!("expected Install(steamassets), got non-install"),
         }
     }
