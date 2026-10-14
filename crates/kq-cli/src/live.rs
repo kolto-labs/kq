@@ -13,19 +13,15 @@ use std::path::Path;
 use anyhow::Result;
 use kq_format::gff::{Struct as GffStruct, Value as GffValue};
 use kq_format::{gff, ncs, ssf, tlk, twoda, ResType};
-use kq_index::{Index, RootKind};
+use kq_index::{Index, RootKind, Source, SourceKind};
 
 use crate::read;
 
-/// Types whose inbound references we often cannot see. Left out of leftover
-/// *resource* reports unless `--assets` or an explicit `-t` is given.
-///
-/// `.lip`: engine opens it only via `CSWCCreature::LipSync` → `CLIP::LoadLip`
-/// with dialog `VO_ResRef` (K1: `Sound` fallback) as resman type 3004 — same
-/// ResRef as the streamwaves VO, never a GFF field named `lip`. Treated as
-/// media like `.wav` for `--no-assets`.
+/// Types the live walk does not follow (`--no-assets`). Textures and models
+/// are opened from MDL/TXI; leftover still lists every ResRef+type the
+/// engine *does* look up by name (scripts, dialog, 2DA, templates, VO).
 pub const ASSET_EXTS: &[&str] = &[
-    "tpc", "tga", "dds", "mdl", "mdx", "wav", "bmu", "mp3", "txi", "plt", "fxp", "lip",
+    "tpc", "tga", "dds", "mdl", "mdx", "bmu", "mp3", "txi", "plt", "fxp",
 ];
 
 /// Never loaded by the engine. Same ResRef as a compiled script does not
@@ -40,11 +36,25 @@ const MODULE_ENTRY_EXTS: &[&str] = &["ifo", "are", "git", "lyt", "vis", "pth"];
 
 /// Engine-opened talk files and the include the compiler always sees.
 /// `nwscript` stays a seed name; `.nss` is not scanned so comments cannot seed the graph.
-const ENGINE_ALWAYS: &[&str] = &["dialog", "dialogf", "nwscript"];
+/// Always opened by the engine (talk table, journal GFF, nwscript include).
+///
+/// See `GetJournalQuestExperience` / journal GUI — `global.jrl` via `CResGFF`
+/// (research-engine Q6 / journal handlers).
+const ENGINE_ALWAYS: &[&str] = &["dialog", "dialogf", "nwscript", "global"];
 
-/// 2DA filenames that appear as strings in `swkotor.exe` (K1 GOG/Steam) and
-/// exist on disk. Intersection, not the C++ `Load2DArrays_*` symbol names —
-/// those do not always match the file (`AppearanceSounds` → `appearancesndset`).
+/// 2DA filenames hardcoded as `C2DA` / `Load2DArrays_*` / side-loader
+/// literals. See `CTwoDimArrays::Load2DArrays` @005c4c20 (K1) / @004805b0 (K2).
+/// Nested tables named by those files (`classes.2da` AttackBonusTable, IPRP
+/// `Name` / `TableResRef`) are reached by scanning those columns as type `2da`
+/// via `CSWClass::Load*` / `CTwoDimArrays::LoadIPRPCostTables`.
+///
+/// Ship leftovers that look related but are **not** exe literals (do not seed):
+/// `aliensound` (K2 loads `AlienVO`), `effecticons`/`dialogtokens`/`loadhints`/
+/// `xpbaseconst`/`tutorial_old` (renames of seeded `effecticon`/`stringtokens`/
+/// `loadscreenhints`/`xptable`/`tutorial`), `cls_atk_3` (classes only refs
+/// `cls_atk_1`/`cls_atk_2`), plus NWN/editor orphans (`actions`, `metamagic`,
+/// `polymorph`, `gamespyrooms`, `rrf_*`, EAX `sound*`, …) — confirmed absent
+/// as token boundaries in `swkotor.exe` / `swkotor2.exe` string tables.
 const ENGINE_2DAS: &[&str] = &[
     "acbonus",
     "aiscripts",
@@ -157,9 +167,30 @@ const ENGINE_2DAS: &[&str] = &[
     "xptable",
 ];
 
-/// K1 `CSWGuiPanel::StartLoadFromLayout` literals (research-engine Q1.e).
+/// Extra `C2DA` literals only in `swkotor2.exe` (`Load2DArrays_AlienVO` etc.).
+/// Seeded only when `index.game == Game::K2`.
+const ENGINE_2DAS_K2: &[&str] = &[
+    "alienvo",
+    "autobalance",
+    "chemicalcreate",
+    "emotion",
+    "influence",
+    "iprp_pc",
+    "itemcreate",
+    "loadstoryhints",
+    "musictable",
+    "swoopupgrade",
+    "tutchemcreate",
+];
+
+/// GUI panel layouts passed to `CSWGuiPanel::StartLoadFromLayout` / `LoadFromLayout`.
+/// Chargen / sub-panel names (`MAINCG`, `ABCHRGEN`, `ScriptSelect`, …) and the
+/// resolution tooltip table (`tooltip6X4`…`tooltip16X12`) are K1 exe string
+/// literals next to the same LoadFromLayout call sites as `classsel` /
+/// `tooltip12x10`.
 const ENGINE_GUIS: &[&str] = &[
     "abilities",
+    "abchrgen",
     "areatransition",
     "barkbubble",
     "blackdot",
@@ -170,15 +201,19 @@ const ENGINE_GUIS: &[&str] = &[
     "confirm",
     "container",
     "credits",
+    "custpnl",
     "debug",
     "dialog",
     "equip",
     "fade",
+    "ftchrgen",
     "galaxymap",
     "inventory",
     "journal",
+    "leveluppnl",
     "load",
     "loadscreen",
+    "maincg",
     "mainmenu",
     "map",
     "messages",
@@ -192,6 +227,7 @@ const ENGINE_GUIS: &[&str] = &[
     "optgameplay",
     "optgraphics",
     "optgraphicsadv",
+    "optkeymapping",
     "optionsingame",
     "optionsmain",
     "optmouse",
@@ -203,25 +239,41 @@ const ENGINE_GUIS: &[&str] = &[
     "pazaakgame",
     "pazaaksetup",
     "pazaakwager",
+    "portcust",
     "pwrlvlup",
+    "qorcpnl",
+    "questitem",
+    "quickpnl",
     "saveload",
     "savename",
+    "scriptselect",
+    "skchrgen",
     "skillinfo",
     "statussummary",
     "store",
     "titlemovie",
     "tooltip",
+    "tooltip10x8",
     "tooltip12x10",
+    "tooltip12x9",
+    "tooltip16x12",
+    "tooltip6x4",
+    "tooltip8x6",
     "top",
     "upgrade",
     "upgradeitems",
     "upgradesel",
 ];
 
-/// Module roots hardcoded in K1 `swkotor.exe` (new game, Ebon Hawk, Taris).
+/// Module roots from `CSWGuiMainMenu::OnNewGamePicked` @0067afb0 (`END_M01AA`)
+/// and `CServerInfo::SetModuleName` @0054eaa0 (`ebo_m12aa`, `ebo_m40ad`, `tar_m02af`).
 const K1_MODULES: &[&str] = &["end_m01aa", "ebo_m12aa", "ebo_m40ad", "tar_m02af"];
 
-/// Default-script / galaxy-map names hardcoded in K1 `swkotor.exe`.
+/// Default-script / GUI names hardcoded in K1 `swkotor.exe`.
+/// See `CSWSCreature::EventHandler` @004fece0 (`k_hen_dialogue01`),
+/// `CSWSDoor::EventHandler` / `CSWSTrigger::EventHandler` (`k_trg_transfail`,
+/// `NW_G0_Transition`), `CAvoidCreature::PlotPathAroundCreature` (`k_def_pathfail01`),
+/// `CSWParty::*`, `CSWGuiDialogComputer::UpdateSkills`, etc.
 const K1_SCRIPTS: &[&str] = &[
     "k_computer_spike",
     "k_def_blocked01",
@@ -246,9 +298,24 @@ const K1_SCRIPTS: &[&str] = &[
     "k_sup_guiopen",
     "k_sup_solo",
     "k_trg_transfail",
+    "nw_g0_transition",
 ];
 
-/// TSL new-game start. Further modules are reached through scripts / GIT.
+/// UTI templates constructed in the exe.
+/// See `CSWSCreature::TransferGold` @004fd730 (`g_i_credits001`),
+/// `CSWSCreature::ForceEquipClothing` @00501c40 (`g_a_clothes01`),
+/// `CSWSCreature::AddPazaakCard` @004efb40, cheat `givemed` / `givecomspikes` etc.
+const ENGINE_TEMPLATES: &[&str] = &[
+    "g_a_clothes01",
+    "g_i_credits001",
+    "g_i_drdrepeqp002",
+    "g_i_medeqpmnt02",
+    "g_i_pazsidebd001",
+    "g_i_progspike01",
+    "g_i_secspike01",
+];
+
+/// TSL new-game start. See `CSWGuiMainMenu::OnNewGamePicked` @0053ccd0 (`001ebo`).
 const K2_MODULES: &[&str] = &["001ebo"];
 
 /// How a decoded resource contributes StrRefs.
@@ -330,6 +397,9 @@ pub fn build(index: &Index) -> Result<LiveGraph> {
         scan_ids.len()
     ));
 
+    // baseitems.itemclass[BaseItem] → inventory icon `i%s_%03d` (see below).
+    let itemclasses = load_baseitem_itemclasses(index, &loaded_map);
+
     // One file at a time, resources in offset order. Nested rayon over a USB
     // mmap random-faults the same BIF and turned a ~30s scan into minutes.
     let groups = group_scan_ids_by_file(index, &scan_ids);
@@ -359,6 +429,7 @@ pub fn build(index: &Index) -> Result<LiveGraph> {
                 &scope,
                 &module_roots,
                 &catalog,
+                &itemclasses,
                 &mut mentions,
                 &mut strrefs,
                 &mut missing,
@@ -385,9 +456,11 @@ pub fn build(index: &Index) -> Result<LiveGraph> {
         }
     }
     add_are_layout_edges(index, &loaded_map, &mut edges);
+    add_module_load_screen_edges(index, &module_entries, &mut edges);
+    add_resolution_gui_texture_edges(index, &loaded_map, &mut edges);
 
     let (seed_labels, seed_ids) = seed_ids(index, &catalog, &loaded_map, &module_entries);
-    let (used_ids, parent) = bfs(index, &seed_ids, &edges, &loaded_map, &module_entries);
+    let (mut used_ids, parent) = bfs(index, &seed_ids, &edges, &loaded_map, &module_entries);
 
     let tlk = load_dialog_tlk(index)?;
     let tlk_len = tlk.len() as i64;
@@ -408,11 +481,18 @@ pub fn build(index: &Index) -> Result<LiveGraph> {
         .collect();
     let reachable = used.clone();
     for row in &tlk {
-        if used_strrefs.contains(&row.strref)
-            && !row.sound.is_empty()
-            && catalog.contains(&row.sound)
-        {
-            used.insert(row.sound.clone());
+        if used_strrefs.contains(&row.strref) && !row.sound.is_empty() {
+            // See `CSWSDialog::SendDialogEntry` (stream WAV) and
+            // `CSWCCreature::LipSync` → `CLIP::LoadLip` (type 3004).
+            // K1 streams under STREAMWAVES; K2 under STREAMVOICE — both are
+            // `.wav` + same-named `.lip` in the graph.
+            for ext in ["wav", "lip"] {
+                let tok = format!("{}.{ext}", row.sound);
+                for id in resolve_mention(index, &loaded_map, &module_entries, &None, &tok) {
+                    used_ids.insert(id);
+                    used.insert(index.resources[id as usize].resref.clone());
+                }
+            }
         }
     }
 
@@ -671,7 +751,15 @@ fn seed_ids(
             {
                 push_resref(name, &mut labels, &mut ids);
             }
+            if matches!(index.game, kq_index::Game::K2) {
+                for name in ENGINE_2DAS_K2 {
+                    push_resref(name, &mut labels, &mut ids);
+                }
+            }
             for name in K1_SCRIPTS {
+                push_resref(name, &mut labels, &mut ids);
+            }
+            for name in ENGINE_TEMPLATES {
                 push_resref(name, &mut labels, &mut ids);
             }
             let extra: &[&str] = match index.game {
@@ -691,6 +779,7 @@ fn seed_ids(
                 .chain(ENGINE_2DAS.iter())
                 .chain(ENGINE_GUIS.iter())
                 .chain(K1_SCRIPTS.iter())
+                .chain(ENGINE_TEMPLATES.iter())
                 .copied()
                 .collect();
             for name in expected {
@@ -732,30 +821,11 @@ fn seed_ids(
     (labels, ids)
 }
 
-fn ini_starting_modules(root: &Path) -> Vec<String> {
-    let mut out = Vec::new();
-    for name in ["swkotor.ini", "swkotor2.ini", "kotor.ini"] {
-        let Ok(text) = std::fs::read_to_string(root.join(name)) else {
-            continue;
-        };
-        for line in text.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with(';') || line.starts_with('#') {
-                continue;
-            }
-            let Some((key, value)) = line.split_once('=') else {
-                continue;
-            };
-            if !key.trim().eq_ignore_ascii_case("startingmodule") {
-                continue;
-            }
-            let value = value.trim().trim_matches('"').to_ascii_lowercase();
-            if !value.is_empty() && value.len() <= 16 {
-                out.push(value);
-            }
-        }
-    }
-    out
+fn ini_starting_modules(_root: &Path) -> Vec<String> {
+    // See research-engine Q2: there is **no** `StartingModule` INI key in either
+    // exe (`CSWGuiMainMenu::OnNewGamePicked` hardcodes END_M01AA / 001ebo).
+    // Kept as a no-op so old INI fiction cannot seed the graph.
+    Vec::new()
 }
 
 fn load_dialog_tlk(index: &Index) -> Result<Vec<TlkRow>> {
@@ -834,7 +904,380 @@ fn resolve_in_scope(
     }
     out.sort_unstable();
     out.dedup();
+    // `VO_ResRef` / TLK sound is one string; `.wav` is global stream and
+    // `.lip` lives in `lips/NAME_loc.mod` (module-scoped). Finding the wav
+    // must not skip the lip.
+    if let Some(lip) = ResType::from_extension("lip") {
+        if types.contains(&lip)
+            && !out
+                .iter()
+                .any(|&i| index.resources[i as usize].restype == lip)
+        {
+            for ((_, resref, rty), &id) in loaded {
+                if resref == tok && *rty == lip {
+                    out.push(id);
+                }
+            }
+        }
+    }
+    if let Some(wav) = ResType::from_extension("wav") {
+        if types.contains(&wav)
+            && !out
+                .iter()
+                .any(|&i| index.resources[i as usize].restype == wav)
+        {
+            for ((_, resref, rty), &id) in loaded {
+                if resref == tok && *rty == wav {
+                    out.push(id);
+                }
+            }
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
     out
+}
+
+/// Split a graph token into ResRef base and optional restype.
+///
+/// See `CExoResMan` / `CResHelper<CRes*,TYPE>::SetResRef` — the engine always
+/// looks up a name **and** a resource type id (`CreateResourceExtensionTable`
+/// K1 @005e6d20). Untyped tokens are module roots only.
+fn split_mention(tok: &str) -> (&str, Option<ResType>) {
+    if let Some((base, ext)) = tok.rsplit_once('.') {
+        if let Some(ty) = ResType::from_extension(ext) {
+            return (base, Some(ty));
+        }
+    }
+    (tok, None)
+}
+
+/// Resolve a mention the way resman would for the caller's module scope.
+///
+/// See `CSWSModule::AddModuleResources` @004c4150 (K1) / @00732120 (K2) for
+/// which tables are registered while a module is loaded; typed tokens filter
+/// by restype, bare names only match module roots (`ExecuteCommandStartNewModule`
+/// @00544390 / `LinkedToModule` on doors via `CSWSDoor::LoadDoor` @0058a1f0).
+fn resolve_mention(
+    index: &Index,
+    loaded: &HashMap<(Scope, String, ResType), u32>,
+    module_entries: &HashMap<String, Vec<u32>>,
+    scope: &Scope,
+    tok: &str,
+) -> Vec<u32> {
+    let (name, ty) = split_mention(tok);
+    if let Some(ty) = ty {
+        let mut ids = resolve_in_scope(index, loaded, module_entries, scope, name);
+        ids.retain(|&i| index.resources[i as usize].restype == ty);
+        ids
+    } else if let Some(ids) = module_entries.get(name) {
+        ids.clone()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Texture open path: TPC, TGA fallback, and same-ResRef TXI.
+///
+/// See Aurora model/GUI texture load; PyKotor `txi` docs — a TXI is either
+/// embedded in a TPC footer or a separate same-ResRef `.txi` next to the
+/// texture (`Libraries/bioware-kaitai-formats/.../txi.py`).
+fn mention_texture(out: &mut HashSet<String>, name: &str) {
+    mention_typed(out, name, "tpc");
+    mention_typed(out, name, "tga");
+    mention_typed(out, name, "txi");
+}
+
+/// Record a typed ResRef edge (`name.ext`) for later `resolve_mention`.
+fn mention_typed(out: &mut HashSet<String>, name: &str, ext: &str) {
+    let name = name.trim().trim_matches('"').to_ascii_lowercase();
+    if name.is_empty() || name == "****" {
+        return;
+    }
+    if name.len() > 16 {
+        return;
+    }
+    out.insert(format!("{name}.{ext}"));
+}
+
+/// See `swkotor.exe` `load_%s` (next to `BMPResRef`) — module transition /
+/// area load pulls texture `load_<moduleRoot>`.
+fn mention_module_load_screen(out: &mut HashSet<String>, module: &str) {
+    let module = module.trim().trim_matches('"').to_ascii_lowercase();
+    if module.is_empty() || module == "****" {
+        return;
+    }
+    let name = format!("load_{module}");
+    if name.len() > 16 {
+        return;
+    }
+    mention_texture(out, &name);
+}
+
+/// See `ExecuteCommandStartNewModule` @00544390 — arg0 is a module name
+/// (`SetMoveToModuleString`), not a resman restype. Also opens `load_%s`.
+fn mention_module(out: &mut HashSet<String>, name: &str, module_roots: &HashSet<String>) {
+    let name = name.trim().trim_matches('"').to_ascii_lowercase();
+    if name.is_empty() || name == "****" {
+        return;
+    }
+    if module_roots.contains(&name) {
+        out.insert(name.clone());
+        mention_module_load_screen(out, &name);
+    }
+}
+
+/// Inventory icon ResRef: exe format string `i%s_%03d` with baseitems
+/// `itemclass` + UTI `ModelVariation` (e.g. `w_BlstrPstl` + 1 → `iw_blstrpstl_001`).
+fn inventory_icon_resref(itemclass: &str, variation: u32) -> Option<String> {
+    let itemclass = itemclass.trim().trim_matches('"');
+    if itemclass.is_empty() || itemclass == "****" {
+        return None;
+    }
+    let name = format!("i{itemclass}_{variation:03}");
+    let name = name.to_ascii_lowercase();
+    if name.len() > 16 {
+        return None;
+    }
+    Some(name)
+}
+
+#[derive(Clone, Copy)]
+enum NcsStrLookup {
+    Skip,
+    Module,
+    Types(&'static [&'static str]),
+}
+
+/// Map ACTION routine id → string-arg lookups (declaration order among strings).
+///
+/// See `CSWVirtualMachineCommands::InitializeCommands` @0054c960 (K1) /
+/// @0077b530 (K2) and the `ExecuteCommand*` handlers below. Tag-only and
+/// print/speak routines use `Skip` so their CONSTS are **consumed** (and do not
+/// become file edges) without wiping the string queue for a later ResRef ACTION.
+/// Nested non-string ACTIONs (`GetPartyMemberByIndex` 577, …) keep an empty
+/// plan so CONSTS for the outer call survive — see `k_def_calodef` → `k_h_calo`.
+///
+/// K2 divergences: `QueueMovie` is 806 (K2 769 = `SetFadeUntilScript`);
+/// `ShowUpgradeScreen` string arg only on K2; 821/836/864 are K2-only.
+fn ncs_str_lookups(routine: u16, k2: bool) -> &'static [NcsStrLookup] {
+    use NcsStrLookup::{Module, Skip, Types};
+    match routine {
+        // Print / speak — drain debug and VO text, no file edge.
+        1 | 39 | 221 => &[Skip],
+        // See `ExecuteCommandExecuteScript` @00535b70 / @0078e630 → NCS.
+        8 => &[Types(&["ncs"])],
+        // See `ExecuteCommandCreateItemOnObject` @0052f570 → `CSWSItem::LoadFromTemplate`.
+        31 | 747 | 766 => &[Types(&["uti"])],
+        // See `ExecuteCommandPlaySound` @00541170 — WAV filename, not UTS.
+        46 => &[Types(&["wav"])],
+        // See `ExecuteCommandEffectAreaEffect` @00530ce0 — three script ResRefs.
+        171 => &[Types(&["ncs"]), Types(&["ncs"]), Types(&["ncs"])],
+        // Tag-only — consume string, no file edge.
+        // See `ExecuteCommandGetWaypointByTag` @0053e2b0 / `GetObjectByTag` @0053c280.
+        197 | 200 | 228 => &[Skip],
+        // See `ExecuteCommandSetAreaTransitionBMP` @00542410 — custom TGA.
+        203 => &[Types(&["tga"])],
+        // See `ExecuteCommandActionStartConversation` @0052d5b0 — DLG then ignore tags.
+        204 => &[
+            Types(&["dlg"]),
+            Skip,
+            Skip,
+            Skip,
+            Skip,
+            Skip,
+            Skip,
+        ],
+        // See `ExecuteCommandCreateObject` @0052f820 — template by nType.
+        243 => &[Types(&["utc", "uti", "utp", "utm", "utw"])],
+        // See `ExecuteCommandBeginConversation` @0052e9f0 / `SpeakOneLiner` @00543f70.
+        255 | 417 => &[Types(&["dlg"])],
+        // See K2 `ExecuteCommandShowUpgradeScreen` @007a84a0 — optional 2DA override.
+        354 if k2 => &[Types(&["2da"])],
+        // See `ExecuteCommandPlayPazaak` @00540fd0 / `ShowPartySelectionGUI` @005438b0.
+        364 | 712 => &[Types(&["ncs"])],
+        // Journal plot Tag — not a file.
+        367 | 368 | 369 | 384 | 678 => &[Skip],
+        // See `ExecuteCommandStartNewModule` @00544390 — module, waypoint Tag, six BIK.
+        509 => &[
+            Module,
+            Skip,
+            Types(&["bik"]),
+            Types(&["bik"]),
+            Types(&["bik"]),
+            Types(&["bik"]),
+            Types(&["bik"]),
+            Types(&["bik"]),
+        ],
+        // See `ExecuteCommandSWMG_SetGunBankStringInfo` @005cc7f0 / `PlayRoomAnimation` @00540dd0.
+        632 | 633 | 738 => &[Types(&["mdl"])],
+        // See `ExecuteCommandAddAvailableNPCByTemplate` @0052dcd0.
+        697 => &[Types(&["utc"])],
+        // See `ExecuteCommandPlayMovie` @00540ed0.
+        733 => &[Types(&["bik"])],
+        // See `ExecuteCommandQueueMovie` @00548210 (K1 id 769).
+        769 if !k2 => &[Types(&["bik"])],
+        // See `ExecuteCommandQueueMovie` @007afa40 (K2 id 806).
+        806 if k2 => &[Types(&["bik"])],
+        // See K2 `ExecuteCommandShowDemoScreen` @007b0510.
+        821 if k2 => &[Types(&["tga"])],
+        // See K2 `ExecuteCommandAddAvailablePUPByTemplate` @007b0750.
+        836 if k2 => &[Types(&["utc"])],
+        // See K2 `ExecuteCommandDisplayMessageBox` @007b1470.
+        864 if k2 => &[Types(&["tga"])],
+        _ => &[],
+    }
+}
+
+/// Apply ResRef lookups for one ACTION's string arguments.
+///
+/// `strings` must be in **nwscript declaration order** (arg0 first). Callers
+/// that read raw NCS CONSTS push order must run `ncs_strings_declaration_order`
+/// first.
+fn apply_ncs_strings(
+    routine: u16,
+    k2: bool,
+    strings: &[String],
+    mentions: &mut HashSet<String>,
+    module_roots: &HashSet<String>,
+) {
+    let plan = ncs_str_lookups(routine, k2);
+    if plan.is_empty() {
+        return;
+    }
+    let start = strings.len().saturating_sub(plan.len());
+    let slice = &strings[start..];
+    for (lookup, s) in plan.iter().zip(slice.iter()) {
+        match *lookup {
+            NcsStrLookup::Skip => {}
+            NcsStrLookup::Module => mention_module(mentions, s, module_roots),
+            NcsStrLookup::Types(exts) => {
+                for ext in exts {
+                    mention_typed(mentions, s, ext);
+                }
+            }
+        }
+    }
+}
+
+/// Map raw CONSTS push order → nwscript declaration order for one ACTION.
+///
+/// NCS pushes ACTION args right-to-left, so the **last** pushed string is arg0.
+/// Only the trailing `n_args` CONSTS belong to this ACTION — earlier strings may
+/// be leftovers from comparisons / debug prints (see `k_sup_galaxymap` STUNT_00
+/// call sites with a dozen prior CONSTS). Take the last `n_args`, then reverse.
+///
+/// Concrete K1 evidence: `k_pebn_exithawk` ACTION 509 leaves
+/// `…, "k_dan_ebon_hawk_transition", "danm13"` — `danm13` is arg0 (module).
+fn ncs_strings_declaration_order(pushed: &[String], n_args: usize) -> Vec<String> {
+    if n_args == 0 || pushed.is_empty() {
+        return Vec::new();
+    }
+    let n = n_args.min(pushed.len());
+    pushed[pushed.len() - n..]
+        .iter()
+        .rev()
+        .cloned()
+        .collect()
+}
+
+/// Walk NCS bytecode; only string args of ResRef-taking ACTIONS become edges.
+///
+/// See `CVirtualMachineInternal::ExecuteCode` ACTION dispatch and
+/// `CSWVirtualMachineCommands::ExecuteCommand` — CONSTS alone are not lookups.
+///
+/// Nested non-string ACTIONs (e.g. `GetPartyMemberByIndex` while evaluating
+/// `ActionStartConversation`'s object arg) must **not** wipe the CONSTS queue:
+/// those strings belong to the outer call. Only an ACTION with a non-empty
+/// string plan consumes (and truncates) trailing CONSTS.
+fn take_ncs_actions(
+    instructions: &[ncs::Instruction],
+    k2: bool,
+    mentions: &mut HashSet<String>,
+    module_roots: &HashSet<String>,
+) {
+    let mut recent = Vec::new();
+    for ins in instructions {
+        if ins.op == "CONSTS" {
+            for arg in &ins.args {
+                if let ncs::Arg::Str(s) = arg {
+                    recent.push(s.clone());
+                }
+            }
+            continue;
+        }
+        if ins.op == "ACTION" {
+            if let Some(rid) = ins.routine {
+                let plan_len = ncs_str_lookups(rid, k2).len();
+                if plan_len > 0 {
+                    let declared = ncs_strings_declaration_order(&recent, plan_len);
+                    apply_ncs_strings(rid, k2, &declared, mentions, module_roots);
+                    let n = plan_len.min(recent.len());
+                    recent.truncate(recent.len() - n);
+                }
+            }
+        }
+    }
+}
+
+/// GFF label → resman types the engine requests for that field.
+///
+/// See:
+/// - `CSWSCreature::ReadScriptsFromGff` @004ebf20 — `Script*` → NCS
+/// - `CSWSDoor::LoadDoor` @0058a1f0 / `CSWSPlaceable::LoadPlaceable` @00585670 —
+///   `On*` / `MineScript` → NCS; `Conversation` → DLG
+/// - `CSWSTrigger::LoadTrigger` @0058da80 — `TrapScript` → NCS
+/// - `CSWSArea::LoadAreaHeader` @00508c50 — ARE `On*` → NCS
+/// - `CSWSModule::LoadModuleStart` @004c9050 — `Mod_On*` → NCS;
+///   `Mod_Entry_Area` → ARE; `Mod_StartMovie` → BIK
+/// - `CSWSDialog::LoadDialogBase` @0059f5f0 — `Script`/`Active` → NCS;
+///   `VO_ResRef`/`Sound` → stream WAV (`CSWSDialog::SendDialogEntry` K1
+///   STREAMWAVES @005a4010 / K2 STREAMVOICE @00754e50) and lip via
+///   `CSWCCreature::LipSync` → `CLIP::LoadLip` (type 3004)
+/// - `CSWSCreatureStats::ReadStatsFromGff` @005afce0 — `Conversation` → DLG
+/// - `CSWSArea::LoadCreatures` etc. — `TemplateResRef` → templates
+/// - UTC `Equip_ItemList`/`EquippedRes` and UTP `InventoryRes` → UTI via
+///   `CSWSItem::LoadFromTemplate` (CreateItemOnObject @0052f570)
+fn gff_field_exts(label: &str) -> Option<&'static [&'static str]> {
+    let l = label.to_ascii_lowercase();
+    Some(match l.as_str() {
+        "conversation" => &["dlg"],
+        "vo_resref" => &["wav", "lip"],
+        // DLG node Sound is VO fallback (same path as VO_ResRef). UTS sound
+        // lists are separate; bare label `Sound` on DLG is the VO case.
+        "sound" => &["wav", "lip"],
+        "templateresref" => &["utc", "uti", "utp", "utm", "utw", "utd", "ute", "uts", "utt"],
+        // See `CSWSItem::LoadFromTemplate` (same path as CreateItemOnObject @0052f570).
+        // UTC `Equip_ItemList` rows store the blueprint in `EquippedRes`; UTP/UTM
+        // container loot uses `InventoryRes`. Either label is a UTI ResRef.
+        "inventoryres" | "equippedres" => &["uti"],
+        // See `CSWGuiPanel::StartLoadFromLayout` / `LoadFromLayout` (research Q4
+        // GUI panel table) — control ResRefs `FILL`/`EDGE`/`CORNER`/`FONT`/`IMAGE`
+        // open textures through the GUI renderer (TPC, TGA fallback, TXI info).
+        "fill" | "edge" | "corner" | "font" | "image" => &["tpc", "tga", "txi"],
+        // See `swkotor.exe` GFF label `IconResRef` — item / feat icon override.
+        "iconresref" => &["tpc", "tga", "txi"],
+        "mod_entry_area" | "area_name" => &["are"],
+        "mod_startmovie" => &["bik"],
+        "cameramodel" | "stuntmodel" => &["mdl"],
+        // See `CSWSDialog::LoadDialog` @005a2ae0 — AmbientTrack is streammusic
+        // (`HD0:STREAMMUSIC\%s`); install ships `.wav` (optional `.bmu`).
+        "ambienttrack" => &["wav", "bmu"],
+        "active" | "active2" | "script" | "script2" | "endconversation" | "endconverabort"
+        | "trapscript" | "minescript" | "heartbeat" | "onenter" | "onexit" | "onuserdefined" => {
+            &["ncs"]
+        }
+        "actionparamstra" | "actionparamstrb" | "paramstra" | "paramstrb" => &["ncs"],
+        _ if l.starts_with("script") || l.starts_with("on") || l.starts_with("mod_on") => &["ncs"],
+        "linkedtomodule" => return None,
+        _ => return None,
+    })
+}
+
+/// See `CSWSDoor::LoadDoor` @0058a1f0 / `CSWSTrigger::LoadTrigger` @0058da80 —
+/// `LinkedToModule` is a module name for `StartNewModule`, not a restype.
+fn is_module_name_field(label: &str) -> bool {
+    label.eq_ignore_ascii_case("LinkedToModule")
 }
 
 fn bfs(
@@ -858,7 +1301,7 @@ fn bfs(
             continue;
         };
         for tok in tokens {
-            for j in resolve_in_scope(index, loaded, module_entries, &scope, tok) {
+            for j in resolve_mention(index, loaded, module_entries, &scope, tok) {
                 if seen.insert(j) {
                     parent.insert(j, id);
                     q.push_back(j);
@@ -1047,6 +1490,11 @@ fn take_nss_tree(
     }
 }
 
+/// Same-resref companions for an ARE after the area is loaded.
+///
+/// See `CSWSArea::LoadRoomInfo` @005073d0 → `CLYT::LoadLayout` (`.lyt`);
+/// `CSWSArea::LoadPathPoints` @00508400 (`.pth`); client
+/// `Scene::LoadVisibility` @004568d0 (`.vis`) via `CSWCArea::LoadArea`.
 fn add_are_layout_edges(
     index: &Index,
     loaded: &HashMap<(Scope, String, ResType), u32>,
@@ -1064,10 +1512,136 @@ fn add_are_layout_edges(
                 continue;
             };
             if loaded.contains_key(&(None, resref.clone(), layout_ty)) {
-                edges.entry(id).or_default().insert(resref.clone());
-                break;
+                edges
+                    .entry(id)
+                    .or_default()
+                    .insert(format!("{resref}.{ext}"));
             }
         }
+    }
+}
+
+/// Module entry → `load_<module>` textures (`swkotor.exe` `load_%s`).
+fn add_module_load_screen_edges(
+    index: &Index,
+    module_entries: &HashMap<String, Vec<u32>>,
+    edges: &mut HashMap<u32, HashSet<String>>,
+) {
+    let _ = index;
+    for (module, ids) in module_entries {
+        let Some(&id) = ids.first() else {
+            continue;
+        };
+        let mut toks = HashSet::new();
+        mention_module_load_screen(&mut toks, module);
+        if !toks.is_empty() {
+            edges.entry(id).or_default().extend(toks);
+        }
+    }
+}
+
+/// Resolution × panel-suffix GUI backgrounds (`800x600`… + `back`/`comp0`/…).
+///
+/// See `swkotor.exe` resolution table next to `BACKGROUND` and panel suffixes
+/// `comp`/`map`/`pazaak`/`store`/`back` — install filenames use `comp0`/`comp1`.
+fn add_resolution_gui_texture_edges(
+    index: &Index,
+    loaded: &HashMap<(Scope, String, ResType), u32>,
+    edges: &mut HashMap<u32, HashSet<String>>,
+) {
+    let Some(gui_ty) = ResType::from_extension("gui") else {
+        return;
+    };
+    // Host on a seeded always-on panel so BFS from ENGINE_GUIS reaches them.
+    const HOSTS: &[&str] = &["mainmenu", "loadscreen", "map", "pazaakgame", "computer"];
+    let mut host = None;
+    for h in HOSTS {
+        if let Some(&id) = loaded.get(&(None, (*h).to_string(), gui_ty)) {
+            host = Some(id);
+            break;
+        }
+    }
+    let Some(id) = host else {
+        let _ = index;
+        return;
+    };
+    let mut toks = HashSet::new();
+    mention_resolution_gui_textures(&mut toks);
+    edges.entry(id).or_default().extend(toks);
+}
+
+fn mention_resolution_gui_textures(out: &mut HashSet<String>) {
+    const RESOLUTIONS: &[&str] = &["800x600", "1024x768", "1280x960", "1600x1200"];
+    const SUFFIXES: &[&str] = &["back", "comp0", "comp1", "load", "map", "pazaak", "store"];
+    for res in RESOLUTIONS {
+        for suf in SUFFIXES {
+            mention_texture(out, &format!("{res}{suf}"));
+        }
+    }
+}
+
+/// `baseitems.2da` `itemclass` column by row index (= UTI `BaseItem`).
+fn load_baseitem_itemclasses(
+    index: &Index,
+    loaded: &HashMap<(Scope, String, ResType), u32>,
+) -> Vec<String> {
+    let Some(ty) = ResType::from_extension("2da") else {
+        return Vec::new();
+    };
+    let Some(&id) = loaded.get(&(None, "baseitems".into(), ty)) else {
+        return Vec::new();
+    };
+    let r = &index.resources[id as usize];
+    let path = &index.files[r.file as usize];
+    let Ok(map) = read::map_file(path) else {
+        return Vec::new();
+    };
+    let end = r.offset as usize + r.size as usize;
+    if end > map.len() {
+        return Vec::new();
+    }
+    let bytes = &map[r.offset as usize..end];
+    let Ok(t) = twoda::read_or_salvage(bytes, Path::new("baseitems.2da")) else {
+        return Vec::new();
+    };
+    let Some(col) = t
+        .columns
+        .iter()
+        .position(|c| c.eq_ignore_ascii_case("itemclass"))
+    else {
+        return Vec::new();
+    };
+    t.rows
+        .iter()
+        .map(|row| {
+            row.get(col)
+                .map(|s| s.as_str())
+                .unwrap_or("")
+                .to_ascii_lowercase()
+        })
+        .collect()
+}
+
+fn mention_uti_inventory_icon(
+    root: &GffStruct,
+    itemclasses: &[String],
+    mentions: &mut HashSet<String>,
+) {
+    let base = match root.get("BaseItem") {
+        Some(GffValue::Int(n)) if *n >= 0 => *n as usize,
+        Some(GffValue::UInt(n)) => *n as usize,
+        _ => return,
+    };
+    let variation = match root.get("ModelVariation") {
+        Some(GffValue::Int(n)) if *n > 0 => *n as u32,
+        Some(GffValue::UInt(n)) if *n > 0 => *n as u32,
+        _ => 1,
+    };
+    let Some(itemclass) = itemclasses.get(base) else {
+        return;
+    };
+    if let Some(icon) = inventory_icon_resref(itemclass, variation) {
+        mention_texture(mentions, &icon);
     }
 }
 
@@ -1080,6 +1654,7 @@ fn scan_bytes(
     scope: &Scope,
     module_roots: &HashSet<String>,
     catalog: &HashSet<String>,
+    itemclasses: &[String],
     mentions: &mut HashSet<String>,
     strrefs: &mut HashSet<i64>,
     missing: &mut HashSet<String>,
@@ -1087,82 +1662,31 @@ fn scan_bytes(
     let ext = r.restype.extension();
     let path = Path::new("<scan>");
     if ext == Some("mdl") {
+        // Binary MDL vertex buffer is the same-ResRef MDX (see `kq_format::mdl`
+        // / PyKotor MDL-MDX). Area rooms also open same-ResRef WOK walkmeshes;
+        // placeables/doors open PWK/DWK (`bwm.py` walkmesh types).
+        mention_typed(mentions, &r.resref, "mdx");
+        mention_typed(mentions, &r.resref, "wok");
+        mention_typed(mentions, &r.resref, "pwk");
+        mention_typed(mentions, &r.resref, "dwk");
+        // Bitmap / lightmap names → TPC/TGA + TXI (model loader + texture info).
         for name in kq_format::mdl::texture_refs(bytes) {
-            consider_token(
-                &name,
-                index,
-                loaded,
-                module_entries,
-                scope,
-                module_roots,
-                catalog,
-                &r.resref,
-                Some("mdl"),
-                mentions,
-                Some(missing),
-                false,
-            );
+            mention_texture(mentions, &name);
         }
+        return;
+    }
+    if ext == Some("tpc") || ext == Some("tga") {
+        // Loose / BIF texture without going through an MDL still needs its TXI.
+        mention_typed(mentions, &r.resref, "txi");
         return;
     }
     if ext == Some("ncs") {
         let Ok(n) = ncs::read(bytes, path) else {
             return;
         };
-        let d = kq_ncs::decompile(&n, index.game);
-        let mut seen_inc = HashSet::new();
-        take_nss_tree(
-            &d.source,
-            index,
-            loaded,
-            module_entries,
-            scope,
-            module_roots,
-            catalog,
-            &r.resref,
-            mentions,
-            missing,
-            &mut seen_inc,
-        );
-        if let Some(src) = nss_source(index, loaded, scope, &r.resref) {
-            take_nss_tree(
-                &src,
-                index,
-                loaded,
-                module_entries,
-                scope,
-                module_roots,
-                catalog,
-                &r.resref,
-                mentions,
-                missing,
-                &mut seen_inc,
-            );
-        }
-        // Bytecode strings the decompiler dropped (incomplete fallback).
-        for ins in &n.instructions {
-            if ins.op != "CONSTS" {
-                continue;
-            }
-            for arg in &ins.args {
-                let ncs::Arg::Str(s) = arg else {
-                    continue;
-                };
-                take_tokens(
-                    s,
-                    index,
-                    loaded,
-                    module_entries,
-                    scope,
-                    module_roots,
-                    catalog,
-                    &r.resref,
-                    Some("ncs"),
-                    mentions,
-                    Some(missing),
-                );
-            }
-        }
+        let k2 = matches!(index.game, kq_index::Game::K2);
+        take_ncs_actions(&n.instructions, k2, mentions, module_roots);
+        let _ = (loaded, catalog, missing, scope, itemclasses);
         return;
     }
     if gff::sniff(bytes) {
@@ -1184,44 +1708,39 @@ fn scan_bytes(
             strrefs,
             missing,
         );
+        if ext == Some("uti") {
+            mention_uti_inventory_icon(&g.root, itemclasses, mentions);
+        }
+        if ext == Some("ifo") {
+            if let Some(m) = scope {
+                mention_module_load_screen(mentions, m);
+            }
+        }
         return;
     }
     if ext == Some("2da") || twoda::sniff(bytes) {
         let Ok(t) = twoda::read_or_salvage(bytes, path) else {
             return;
         };
-        for label in &t.labels {
-            take_tokens(
-                label,
-                index,
-                loaded,
-                module_entries,
-                scope,
-                module_roots,
-                catalog,
-                &r.resref,
-                ext,
-                mentions,
-                Some(missing),
-            );
+        // See `Load2DArrays_StateScripts` @005c27c0 — every string cell is an NCS
+        // ResRef. `aiscripts.2da` is GUI-only (`CSWGuiScriptSelect` / K2
+        // `Load2DArrays_AIScripts`) — NAME_STRREF / AISTATE, not RunScript.
+        let scan_all_ncs = r.resref.eq_ignore_ascii_case("statescripts");
+        if scan_all_ncs {
+            for label in &t.labels {
+                mention_typed(mentions, label, "ncs");
+            }
         }
         for row in &t.rows {
             for (i, cell) in row.iter().enumerate() {
-                let col = t.columns.get(i).map(|s| s.as_str());
-                take_tokens(
-                    cell,
-                    index,
-                    loaded,
-                    module_entries,
-                    scope,
-                    module_roots,
-                    catalog,
-                    &r.resref,
-                    ext,
-                    mentions,
-                    Some(missing),
-                );
-                if col.is_some_and(is_strref_column) {
+                let col = t.columns.get(i).map(|s| s.as_str()).unwrap_or("");
+                if scan_all_ncs {
+                    mention_typed(mentions, cell, "ncs");
+                }
+                for ext in twoda_cell_exts(&r.resref, col) {
+                    mention_typed(mentions, cell, ext);
+                }
+                if is_strref_column(col) {
                     if let Some(n) = parse_strref(cell) {
                         strrefs.insert(n);
                     }
@@ -1241,23 +1760,13 @@ fn scan_bytes(
         }
         return;
     }
-    if r.restype.is_plain_text() {
+    if ext == Some("lyt") || ext == Some("vis") {
         if let Ok(text) = std::str::from_utf8(bytes) {
-            take_tokens(
-                text,
-                index,
-                loaded,
-                module_entries,
-                scope,
-                module_roots,
-                catalog,
-                &r.resref,
-                ext,
-                mentions,
-                Some(missing),
-            );
+            take_layout_mdl_mentions(text, mentions);
         }
+        return;
     }
+    let _ = (index, loaded, module_entries, scope, catalog, missing);
 }
 
 fn walk_gff_struct(
@@ -1295,39 +1804,9 @@ fn walk_gff_struct(
     }
 }
 
-/// GFF labels the engine reads as ResRefs (research-engine Q3/Q4/Q6).
-///
-/// These fields are a single ResRef each (not free prose). Same-ResRef as the
-/// owning resource is still a live edge when it names another restype — e.g.
-/// UTC `Conversation` == template name → `.dlg`, DLG `VO_ResRef` → `.lip`
-/// (`CSWCCreature::LipSync` / `CLIP::LoadLip` type 3004).
+/// True when `gff_field_exts` or `LinkedToModule` would emit an edge.
 fn is_engine_resref_field(label: &str) -> bool {
-    matches!(
-        label,
-        "Conversation"
-            | "TemplateResRef"
-            | "VO_ResRef"
-            | "Sound"
-            | "Active"
-            | "Active2"
-            | "Script"
-            | "Script2"
-            | "EndConversation"
-            | "EndConverAbort"
-            | "InventoryRes"
-            | "LinkedToModule"
-            | "Mod_Entry_Area"
-            | "Area_Name"
-            | "CameraModel"
-            | "AmbientTrack"
-            | "StuntModel"
-            | "ActionParamStrA"
-            | "ActionParamStrB"
-            | "ParamStrA"
-            | "ParamStrB"
-    ) || label.starts_with("Script")
-        || label.starts_with("On")
-        || label.starts_with("Mod_On")
+    is_module_name_field(label) || gff_field_exts(label).is_some()
 }
 
 fn walk_gff_value(
@@ -1348,39 +1827,31 @@ fn walk_gff_value(
 ) {
     match v {
         GffValue::Str(s) => {
-            if key.is_some_and(|k| is_engine_resref_field(k)) {
-                // One ResRef cell — do not prose-split; allow self ResRef so
-                // Conversation/VO_ResRef matching the owner name still resolve
-                // to .dlg / .lip / .ncs of that name.
-                consider_token(
-                    &s.to_ascii_lowercase(),
-                    index,
-                    loaded,
-                    module_entries,
-                    scope,
-                    module_roots,
-                    catalog,
-                    self_ref,
-                    self_ext,
-                    mentions,
-                    Some(missing),
-                    true,
-                );
-            } else {
-                take_tokens(
-                    s,
-                    index,
-                    loaded,
-                    module_entries,
-                    scope,
-                    module_roots,
-                    catalog,
-                    self_ref,
-                    self_ext,
-                    mentions,
-                    Some(missing),
-                );
+            let Some(k) = key else {
+                return;
+            };
+            if is_module_name_field(k) {
+                mention_module(mentions, s, module_roots);
+            } else if let Some(exts) = gff_field_exts(k) {
+                // See `CSWSSoundObject::Load` @005c9040 — UTS `Sounds` entries
+                // are WAV only (no lip). DLG `Sound`/`VO_ResRef` still get both.
+                let exts = if self_ext == Some("uts")
+                    && (k.eq_ignore_ascii_case("sound") || k.eq_ignore_ascii_case("sounds"))
+                {
+                    &["wav"][..]
+                } else {
+                    exts
+                };
+                for ext in exts {
+                    mention_typed(mentions, s, ext);
+                }
+            } else if k.eq_ignore_ascii_case("resref") {
+                // See `CSWSArea::LoadStores` — store instances use `ResRef` (UTI/… templates).
+                for ext in ["utc", "uti", "utp", "utm", "utw", "utd", "ute", "uts", "utt"] {
+                    mention_typed(mentions, s, ext);
+                }
             }
+            let _ = (index, loaded, module_entries, scope, catalog, self_ref, self_ext, missing);
         }
         GffValue::LocString { strref, substrings: _ } => {
             // Spoken/UI text is not a ResRef source. Tokenizing it is what
@@ -1467,11 +1938,11 @@ fn collect(
                 strrefs,
                 missing,
             };
-            // CONSTS-only until ACTION-aware ResRef edges land with DeNCS.
+            // ACTION string-arg ResRefs only — see `take_ncs_actions`.
             if self_ext == Some("ncs")
                 || v.get("instructions").is_some_and(serde_json::Value::is_array)
             {
-                walk_ncs_consts(v, &mut w);
+                walk_ncs_actions_json(v, &mut w);
             } else {
                 walk_json(v, &mut w, None);
             }
@@ -1510,10 +1981,12 @@ struct Walk<'a> {
 }
 
 #[cfg(test)]
-fn walk_ncs_consts(v: &serde_json::Value, w: &mut Walk<'_>) {
+fn walk_ncs_actions_json(v: &serde_json::Value, w: &mut Walk<'_>) {
     let Some(instructions) = v.get("instructions").and_then(serde_json::Value::as_array) else {
         return;
     };
+    let k2 = matches!(w.index.game, kq_index::Game::K2);
+    let mut recent: Vec<String> = Vec::new();
     for ins in instructions {
         let Some(map) = ins.as_object() else {
             continue;
@@ -1521,29 +1994,26 @@ fn walk_ncs_consts(v: &serde_json::Value, w: &mut Walk<'_>) {
         let Some(op) = map.get("op").and_then(serde_json::Value::as_str) else {
             continue;
         };
-        if op != "CONSTS" {
+        if op == "CONSTS" {
+            if let Some(args) = map.get("args").and_then(serde_json::Value::as_array) {
+                for arg in args {
+                    if let serde_json::Value::String(s) = arg {
+                        recent.push(s.clone());
+                    }
+                }
+            }
             continue;
         }
-        let Some(args) = map.get("args").and_then(serde_json::Value::as_array) else {
-            continue;
-        };
-        for arg in args {
-            let serde_json::Value::String(s) = arg else {
-                continue;
-            };
-            take_tokens(
-                s,
-                w.index,
-                w.loaded,
-                w.module_entries,
-                w.scope,
-                w.module_roots,
-                w.catalog,
-                w.self_ref,
-                w.self_ext,
-                w.mentions,
-                Some(w.missing),
-            );
+        if op == "ACTION" {
+            if let Some(rid) = map.get("routine").and_then(serde_json::Value::as_u64) {
+                let plan_len = ncs_str_lookups(rid as u16, k2).len();
+                if plan_len > 0 {
+                    let declared = ncs_strings_declaration_order(&recent, plan_len);
+                    apply_ncs_strings(rid as u16, k2, &declared, w.mentions, w.module_roots);
+                    let n = plan_len.min(recent.len());
+                    recent.truncate(recent.len() - n);
+                }
+            }
         }
     }
 }
@@ -1619,6 +2089,162 @@ fn is_strref_column(col: &str) -> bool {
         || c.ends_with("string")
 }
 
+/// 2DA column whose cells are talk-table indices (for `kq cat` TLK resolve).
+pub fn twoda_strref_column(col: &str) -> bool {
+    is_strref_column(col)
+}
+
+/// Columns whose cells are nested 2DA filenames.
+///
+/// See `CSWClass::LoadAttackBonusTable` @005bcda0 … `LoadSpellKnownTable`
+/// @005bdbe0; `CTwoDimArrays::LoadIPRPCostTables` @005c4730 /
+/// `LoadIPRPParamTables` @005c49c0 (`Name` / `TableResRef`).
+fn is_2da_table_column(col: &str) -> bool {
+    matches!(
+        col.to_ascii_lowercase().as_str(),
+        "tableresref"
+            | "subtyperesref"
+            | "attackbonustable"
+            | "featstable"
+            | "savingthrowtable"
+            | "skillstable"
+            | "spellgaintable"
+            | "spellknowntable"
+            | "featgain"
+            | "armorclasscolumn"
+            | "costtableresref"
+            | "param1resref"
+    )
+}
+
+/// Whether a 2DA column holds a resource name (vs StrRef / label).
+fn is_2da_live_column(table: &str, col: &str) -> bool {
+    !twoda_cell_exts(table, col).is_empty()
+}
+
+/// Resource types a 2DA cell names. Empty = not a file lookup.
+///
+/// See `CSWSTrigger::LoadTrigger` / `Load2DArrays_Traps` — `TrapScript` → NCS;
+/// `CSWSpellArray::Load` — `ImpactScript` → NCS;
+/// `CSWSCreature::ApplyDiseasePayload` @004f6790 — disease script columns → NCS;
+/// `CSoundSetList::CSoundSetList` @00678c10 — `RESREF` → SSF (type 2060), not WAV.
+fn twoda_cell_exts(table: &str, col: &str) -> &'static [&'static str] {
+    if is_2da_table_column(col) {
+        return &["2da"];
+    }
+    let c = col.to_ascii_lowercase();
+    let t = table.to_ascii_lowercase();
+    if matches!(t.as_str(), "iprp_costtable" | "iprp_paramtable") && c == "name" {
+        return &["2da"];
+    }
+    if t == "soundset" && c == "resref" {
+        return &["ssf"];
+    }
+    // See `swkotor.exe` `HD0:STREAMMUSIC\%s` / `AmbientMusic` / `AmbientSound`
+    // Load2DArrays — `resource` + `stinger*` cells are streammusic/streamsounds
+    // ResRefs (`.wav` on disk).
+    if matches!(t.as_str(), "ambientmusic" | "ambientsound")
+        && (c == "resource" || c.starts_with("stinger"))
+    {
+        return &["wav"];
+    }
+    // `aiscripts` cells are GUI metadata, not script ResRefs.
+    if t == "aiscripts" {
+        return &[];
+    }
+    if c.contains("script") {
+        return &["ncs"];
+    }
+    // Footstep / placeable / GUI sound tables name WAVs in surface or state
+    // columns (`dirt0`, `opened`, …) — the column label often lacks "sound".
+    if matches!(t.as_str(), "footstepsounds" | "placeableobjsnds" | "guisounds")
+        && !is_strref_column(&c)
+        && !matches!(c.as_str(), "label" | "rowname")
+    {
+        return &["wav"];
+    }
+    if c.contains("sound") || c.contains("wav") {
+        return &["wav"];
+    }
+    if c.contains("model") || c.ends_with("_node") || c.ends_with("visual") {
+        // visualeffects `*_node`, spells `CastHandVisual`, … → MDL.
+        return &["mdl"];
+    }
+    // appearance `texA`… / `RaceTex`, heads `HeadTex*`, `EnvMap` — textures.
+    // Prefer prefix/suffix `tex` so unrelated columns are not swept up.
+    if c.starts_with("tex")
+        || c.ends_with("tex")
+        || c == "envmap"
+        || c.starts_with("headtex")
+        || c.contains("icon")
+        || c.contains("texture")
+        || c.contains("portrait")
+    {
+        return &["tga", "tpc", "txi"];
+    }
+    // heads.2da `Head` is the head MDL ResRef.
+    if t == "heads" && c == "head" {
+        return &["mdl"];
+    }
+    // upgrade / upcrystals `Template` (+ `*mdlvar` item blueprints) → UTI.
+    if c == "template" || c.ends_with("mdlvar") {
+        return &["uti"];
+    }
+    // See `swkotor.exe` `BMPResRef` on loadscreens.2da — load-screen textures
+    // (`LOAD_CHARGEN`, …), not template ResRefs. Must beat the generic `*resref`
+    // branch below.
+    if c == "bmpresref" {
+        return &["tga", "tpc", "txi"];
+    }
+    // See loadscreens `MusicResRef` / exe `MusicResRef` — streammusic cue, not a
+    // template ResRef.
+    if c == "musicresref" {
+        return &["wav"];
+    }
+    if c == "filename" {
+        // See `Load2DArrays_Movies` / movie list — Filename cells are BIK ResRefs.
+        return &["bik"];
+    }
+    if c == "resref" || c.ends_with("resref") {
+        // Generic *ResRef on templates / dialogs — multi-type probe.
+        return &["utc", "uti", "utp", "utm", "utw", "utd", "ute", "uts", "utt", "dlg"];
+    }
+    &[]
+}
+
+/// Room / model names inside LYT/VIS text → MDL ResRefs (+ MDX/WOK companions).
+///
+/// See `CSWSArea::LoadRoomInfo` @005073d0 / `CLYT::LoadLayout` @005df140.
+/// PyKotor `LYT.iter_resource_identifiers` yields MDL+MDX+WOK per room model.
+fn take_layout_mdl_mentions(text: &str, mentions: &mut HashSet<String>) {
+    let lower = text.to_ascii_lowercase();
+    let mut start = None;
+    for (i, c) in lower.char_indices() {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            if start.is_none() {
+                start = Some(i);
+            }
+        } else if let Some(st) = start.take() {
+            let tok = &lower[st..i];
+            if tok.len() > 1 && tok.len() <= 16 {
+                mention_room_model(mentions, tok);
+            }
+        }
+    }
+    if let Some(st) = start {
+        let tok = &lower[st..];
+        if tok.len() > 1 && tok.len() <= 16 {
+            mention_room_model(mentions, tok);
+        }
+    }
+}
+
+fn mention_room_model(out: &mut HashSet<String>, name: &str) {
+    mention_typed(out, name, "mdl");
+    mention_typed(out, name, "mdx");
+    mention_typed(out, name, "wok");
+}
+
 fn parse_strref(s: &str) -> Option<i64> {
     let s = s.trim();
     if s.is_empty() || s == "****" {
@@ -1647,7 +2273,7 @@ fn take_tokens(
     let lower = s.to_ascii_lowercase();
     let mut start = None;
     for (i, c) in lower.char_indices() {
-        if c.is_ascii_alphanumeric() || c == '_' || c == '.' {
+        if c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-' || c == '!' || c == '+' {
             if start.is_none() {
                 start = Some(i);
             }
@@ -1749,7 +2375,10 @@ fn consider_token(
         }
         if looks_like_resref_token(tok) {
             if let Some(m) = missing {
-                if tok.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                if tok
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '!' || c == '+')
+                {
                     m.insert(tok.to_string());
                 }
             }
@@ -2125,7 +2754,7 @@ mod tests {
                 ResType::from_extension("are").unwrap(),
             ))
             .unwrap();
-        assert!(edges.get(&are_id).unwrap().contains("m01aa"));
+        assert!(edges.get(&are_id).unwrap().contains("m01aa.lyt"));
 
         // Tokenize path: scanning ARE text that contains "m01aa.lyt" must keep the token.
         let roots = HashSet::new();
@@ -2189,9 +2818,9 @@ mod tests {
         let loaded = scoped_loaded(&index);
         let module_entries = HashMap::new();
         let mut edges = HashMap::new();
-        edges.insert(1, HashSet::from(["dead_b".into()]));
-        edges.insert(2, HashSet::from(["dead_a".into()]));
-        edges.insert(0, HashSet::from(["n_endsol01".into()]));
+        edges.insert(1, HashSet::from(["dead_b.ncs".into()]));
+        edges.insert(2, HashSet::from(["dead_a.ncs".into()]));
+        edges.insert(0, HashSet::from(["n_endsol01.ncs".into()]));
         let (seen, _parent) = bfs(&index, &[0], &edges, &loaded, &module_entries);
         assert!(seen.contains(&0));
         assert!(seen.contains(&3));
@@ -2233,8 +2862,8 @@ mod tests {
         let loaded = scoped_loaded(&index);
         let module_entries = module_entry_ids(&index, &loaded);
         let mut edges = HashMap::new();
-        edges.insert(0, HashSet::from(["end_trask".into()]));
-        edges.insert(4, HashSet::from(["other_mod_utc".into()]));
+        edges.insert(0, HashSet::from(["end_trask.utc".into()]));
+        edges.insert(4, HashSet::from(["other_mod_utc.utc".into()]));
         let seeds = module_entries.get("end_m01aa").cloned().unwrap_or_default();
         let (seen, _parent) = bfs(&index, &seeds, &edges, &loaded, &module_entries);
         assert!(seen.contains(&2)); // end_trask
@@ -2272,7 +2901,7 @@ mod tests {
         let module_entries = module_entry_ids(&index, &loaded);
         let mut edges = HashMap::new();
         // GIT does not mention the trigger. The UTT still names the script.
-        edges.insert(1, HashSet::from(["k_punk_exit".into()]));
+        edges.insert(1, HashSet::from(["k_punk_exit.ncs".into()]));
         let seeds = module_entries.get("unk_m44ac").cloned().unwrap_or_default();
         let (seen, _parent) = bfs(&index, &seeds, &edges, &loaded, &module_entries);
         assert!(seen.contains(&1), "unplaced UTT is a module GFF entry");
@@ -2310,7 +2939,7 @@ mod tests {
         let loaded = scoped_loaded(&index);
         let module_entries = module_entry_ids(&index, &loaded);
         let mut edges = HashMap::new();
-        edges.insert(0, HashSet::from(["k_swg_gizka01".into()]));
+        edges.insert(0, HashSet::from(["k_swg_gizka01.ncs".into()]));
         let (seen, _) = bfs(&index, &[0], &edges, &loaded, &module_entries);
         assert!(
             seen.contains(&1),
@@ -2392,7 +3021,7 @@ mod tests {
             ))
             .unwrap();
         let mut edges = HashMap::new();
-        edges.insert(ifo_id, HashSet::from(["k_pend_activate".into()]));
+        edges.insert(ifo_id, HashSet::from(["k_pend_activate.ncs".into()]));
         let (seen, parent) = bfs(&index, &[ifo_id], &edges, &loaded, &module_entries);
         let ncs = ResType::from_extension("ncs").unwrap();
         let want = *loaded
@@ -2427,7 +3056,7 @@ mod tests {
             .get(&(Some("tar_m03aa".into()), "tar03_citizen".into(), dlg_ty))
             .unwrap();
         let mut edges = HashMap::new();
-        edges.insert(dlg, HashSet::from(["k_ptar_rndtalk0".into()]));
+        edges.insert(dlg, HashSet::from(["k_ptar_rndtalk0.ncs".into()]));
         let (seen, _) = bfs(&index, &[dlg], &edges, &loaded, &module_entries);
         let ncs = ResType::from_extension("ncs").unwrap();
         let local = *loaded
@@ -2506,27 +3135,173 @@ mod tests {
         assert!(ENGINE_GUIS.contains(&"mainmenu"));
         assert!(ENGINE_GUIS.contains(&"loadscreen"));
         assert!(ENGINE_GUIS.contains(&"partyselection"));
+        // Chargen / sub-panels and resolution tooltips — K1 exe literals.
+        assert!(ENGINE_GUIS.contains(&"maincg"));
+        assert!(ENGINE_GUIS.contains(&"scriptselect"));
+        assert!(ENGINE_GUIS.contains(&"tooltip8x6"));
+        assert!(ENGINE_GUIS.contains(&"abchrgen"));
     }
 
     #[test]
-    fn ncs_collect_consts_only_skips_opcode_and_action_names() {
+    fn stream_vo_types_are_not_no_assets_skipped() {
+        // VO is streamed (`CSWSDialog::SendDialogEntry`) and lip goes through
+        // resman type 3004 (`CLIP::LoadLip`); leftover must still list them.
+        assert!(!is_asset(ResType::from_extension("wav").unwrap()));
+        assert!(!is_asset(ResType::from_extension("lip").unwrap()));
+        assert!(is_asset(ResType::from_extension("tpc").unwrap()));
+    }
+
+    #[test]
+    fn trap_script_field_maps_to_ncs() {
+        // See `CSWSTrigger::LoadTrigger` @0058da80 — TrapScript / MineScript → NCS.
+        assert_eq!(gff_field_exts("TrapScript"), Some(&["ncs"][..]));
+        assert_eq!(gff_field_exts("MineScript"), Some(&["ncs"][..]));
+        assert_eq!(gff_field_exts("ScriptHeartbeat"), Some(&["ncs"][..]));
+        assert_eq!(gff_field_exts("EquippedRes"), Some(&["uti"][..]));
+        assert_eq!(gff_field_exts("InventoryRes"), Some(&["uti"][..]));
+        assert_eq!(gff_field_exts("FILL"), Some(&["tpc", "tga", "txi"][..]));
+        assert_eq!(gff_field_exts("FONT"), Some(&["tpc", "tga", "txi"][..]));
+        assert_eq!(gff_field_exts("IconResRef"), Some(&["tpc", "tga", "txi"][..]));
+        assert!(gff_field_exts("Tag").is_none());
+        assert!(is_engine_resref_field("TrapScript"));
+    }
+
+    #[test]
+    fn loadscreens_bmpresref_maps_to_textures() {
+        assert_eq!(
+            twoda_cell_exts("loadscreens", "BMPResRef"),
+            &["tga", "tpc", "txi"][..]
+        );
+        assert_eq!(twoda_cell_exts("loadscreens", "MusicResRef"), &["wav"][..]);
+    }
+
+    #[test]
+    fn ambientmusic_resource_and_stinger_map_to_wav() {
+        // See `HD0:STREAMMUSIC\%s` — ambientmusic/ambientsound resource cells.
+        assert_eq!(twoda_cell_exts("ambientmusic", "Resource"), &["wav"][..]);
+        assert_eq!(twoda_cell_exts("ambientmusic", "Stinger1"), &["wav"][..]);
+        assert_eq!(twoda_cell_exts("ambientsound", "resource"), &["wav"][..]);
+    }
+
+    #[test]
+    fn ambienttrack_field_maps_to_streammusic_wav() {
+        assert_eq!(gff_field_exts("AmbientTrack"), Some(&["wav", "bmu"][..]));
+    }
+
+    #[test]
+    fn inventory_icon_resref_from_itemclass_and_variation() {
+        assert_eq!(
+            inventory_icon_resref("w_BlstrPstl", 1).as_deref(),
+            Some("iw_blstrpstl_001")
+        );
+        assert_eq!(
+            inventory_icon_resref("i_Credits", 2).as_deref(),
+            Some("ii_credits_002")
+        );
+        assert_eq!(inventory_icon_resref("****", 1), None);
+    }
+
+    #[test]
+    fn module_load_screen_texture_name() {
+        let mut out = HashSet::new();
+        mention_module_load_screen(&mut out, "danm13");
+        assert!(out.contains("load_danm13.tpc"));
+        assert!(out.contains("load_danm13.tga"));
+    }
+
+    #[test]
+    fn resolution_gui_textures_include_1024x768back() {
+        let mut out = HashSet::new();
+        mention_resolution_gui_textures(&mut out);
+        assert!(out.contains("1024x768back.tpc"));
+        assert!(out.contains("800x600pazaak.tga"));
+        assert!(out.contains("1600x1200comp0.txi"));
+    }
+
+    #[test]
+    fn k2_only_2da_not_seeded_on_k1() {
+        // See `Load2DArrays_AlienVO` — TSL only; K1 seeds omit ENGINE_2DAS_K2.
+        use serde_json::json;
+        let twoda = ResType::from_extension("2da").unwrap().0;
+        let mut index: Index = serde_json::from_value(json!({
+            "schema": 3,
+            "root": "/game",
+            "kind": "install",
+            "game": "k1",
+            "fingerprint": 0,
+            "files": ["/game/data/2da.bif"],
+            "sources": [
+                {"kind":"chitin","label":"data/2da.bif","precedence":700,"module_root":null}
+            ],
+            "resources": [
+                {"resref":"appearance","restype":twoda,"file":0,"offset":0,"size":1,"source":0},
+                {"resref":"alienvo","restype":twoda,"file":0,"offset":1,"size":1,"source":0}
+            ],
+            "warnings": []
+        }))
+        .unwrap();
+        index.reindex();
+        let catalog = catalog_of(&index);
+        let loaded = scoped_loaded(&index);
+        let entries = module_entry_ids(&index, &loaded);
+        let (labels, _) = seed_ids(&index, &catalog, &loaded, &entries);
+        assert!(labels.iter().any(|s| s == "appearance"));
+        assert!(
+            !labels.iter().any(|s| s == "alienvo"),
+            "K2-only AlienVO must not seed on K1: {labels:?}"
+        );
+    }
+
+    #[test]
+    fn k2_engine_2das_include_alienvo() {
+        assert!(ENGINE_2DAS_K2.contains(&"alienvo"));
+    }
+
+    #[test]
+    fn nwn_leftover_2das_are_not_engine_seeds() {
+        // Present in data/2da.bif on K1 but not Load2DArrays literals in either exe.
+        for name in [
+            "aliensound",
+            "actions",
+            "effecticons",
+            "dialogtokens",
+            "loadhints",
+            "xpbaseconst",
+            "tutorial_old",
+            "cls_atk_3",
+            "metamagic",
+            "polymorph",
+            "gamespyrooms",
+        ] {
+            assert!(
+                !ENGINE_2DAS.contains(&name) && !ENGINE_2DAS_K2.contains(&name),
+                "{name} must not be seeded (NWN/rename leftover)"
+            );
+        }
+        // Live names the engine actually opens:
+        assert!(ENGINE_2DAS.contains(&"effecticon"));
+        assert!(ENGINE_2DAS.contains(&"stringtokens"));
+        assert!(ENGINE_2DAS.contains(&"loadscreenhints"));
+        assert!(ENGINE_2DAS.contains(&"xptable"));
+        assert!(ENGINE_2DAS.contains(&"tutorial"));
+    }
+
+    #[test]
+    fn execute_script_action_8_mentions_ncs() {
+        // See `ExecuteCommandExecuteScript` @00535b70 — arg0 NCS.
+        // See `ExecuteCommandGetObjectByTag` @0053c280 — Tag, not a file.
         let (index, loaded, entries) = global_lookup(&[]);
         let roots = HashSet::new();
         let mut mentions = HashSet::new();
         let mut strrefs = HashSet::new();
         let mut missing = HashSet::new();
         let v = serde_json::json!({
-            "declared_size": 42,
             "instructions": [
                 {"offset": 13, "op": "CONSTS", "args": ["my_script"]},
-                {
-                    "offset": 20,
-                    "op": "ACTION",
-                    "routine": 200,
-                    "name": "GetObjectByTag",
-                    "argc": 2
-                },
-                {"offset": 25, "op": "RETN"}
+                {"offset": 20, "op": "ACTION", "routine": 8, "argc": 3},
+                {"offset": 30, "op": "CONSTS", "args": ["some_tag"]},
+                {"offset": 40, "op": "ACTION", "routine": 200, "argc": 2},
+                {"offset": 50, "op": "RETN"}
             ]
         });
         collect(
@@ -2545,15 +3320,159 @@ mod tests {
             &mut missing,
         );
         assert!(
-            mentions.contains("my_script") || missing.contains("my_script"),
-            "CONSTS string must be mentioned; mentions={mentions:?} missing={missing:?}"
+            mentions.contains("my_script.ncs"),
+            "ExecuteScript must mention typed ncs; mentions={mentions:?}"
         );
-        for noise in ["action", "getobjectbytag", "consts", "retn"] {
-            assert!(
-                !mentions.contains(noise) && !missing.contains(noise),
-                "opcode/routine name {noise} must not be a token; mentions={mentions:?} missing={missing:?}"
-            );
-        }
+        assert!(
+            !mentions.contains("some_tag") && !mentions.contains("some_tag.ncs"),
+            "GetObjectByTag must not edge; mentions={mentions:?}"
+        );
+    }
+
+    #[test]
+    fn play_sound_action_46_mentions_wav() {
+        // See `ExecuteCommandPlaySound` @00541170.
+        let mut mentions = HashSet::new();
+        let roots = HashSet::new();
+        apply_ncs_strings(46, false, &["gui_click".into()], &mut mentions, &roots);
+        assert!(mentions.contains("gui_click.wav"));
+    }
+
+    #[test]
+    fn start_new_module_arg0_module_skips_waypoint_tag() {
+        // See `ExecuteCommandStartNewModule` @00544390 — arg0 module, arg1 Tag.
+        // `apply_ncs_strings` takes declaration order (arg0 first).
+        let mut mentions = HashSet::new();
+        let roots = HashSet::from(["end_m01aa".into()]);
+        apply_ncs_strings(
+            509,
+            false,
+            &[
+                "end_m01aa".into(),
+                "wp_start".into(),
+                "legal".into(),
+            ],
+            &mut mentions,
+            &roots,
+        );
+        assert!(mentions.contains("end_m01aa"));
+        assert!(!mentions.contains("wp_start"));
+        assert!(mentions.contains("legal.bik"));
+    }
+
+    #[test]
+    fn start_new_module_consts_push_order_is_reversed() {
+        // Real K1 `k_pebn_exithawk` ACTION 509 CONSTS stream (push / RTL order).
+        let mut mentions = HashSet::new();
+        let roots = HashSet::from(["danm13".into()]);
+        let pushed = vec![
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "k_dan_ebon_hawk_transition".into(),
+            "danm13".into(),
+        ];
+        let declared = ncs_strings_declaration_order(&pushed, 8);
+        apply_ncs_strings(509, false, &declared, &mut mentions, &roots);
+        assert!(
+            mentions.contains("danm13"),
+            "module arg0 must resolve; mentions={mentions:?}"
+        );
+        assert!(
+            !mentions.contains("danm13.bik"),
+            "module must not be typed as bik; mentions={mentions:?}"
+        );
+        assert!(!mentions.contains("k_dan_ebon_hawk_transition"));
+        assert!(!mentions.contains("k_dan_ebon_hawk_transition.bik"));
+    }
+
+    #[test]
+    fn start_new_module_ignores_leading_consts_noise() {
+        // `k_sup_galaxymap` pushes many CONSTS before the eight StartNewModule args.
+        let mut mentions = HashSet::new();
+        let roots = HashSet::from(["stunt_00".into()]);
+        let pushed = vec![
+            "05_2a".into(),
+            "05_4a".into(),
+            "LIVE_1a".into(),
+            "NULL".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "08".into(),
+            "".into(),
+            "STUNT_00".into(),
+        ];
+        let declared = ncs_strings_declaration_order(&pushed, 8);
+        apply_ncs_strings(509, false, &declared, &mut mentions, &roots);
+        assert!(
+            mentions.contains("stunt_00"),
+            "trailing module arg0 must win over leading noise; mentions={mentions:?}"
+        );
+        assert!(!mentions.contains("05_2a.bik") && !mentions.contains("05_2a"));
+    }
+
+    #[test]
+    fn action_start_conversation_survives_nested_getpartymember() {
+        // Real K1 `k_def_calodef`: CONSTS for ActionStartConversation, then
+        // ACTION 577 GetPartyMemberByIndex (object arg), then ACTION 204.
+        // Clearing on 577 dropped `k_h_calo.dlg`.
+        let (index, loaded, entries) = global_lookup(&[]);
+        let roots = HashSet::new();
+        let mut mentions = HashSet::new();
+        let mut strrefs = HashSet::new();
+        let mut missing = HashSet::new();
+        let v = serde_json::json!({
+            "instructions": [
+                {"offset": 1, "op": "CONSTS", "args": [""]},
+                {"offset": 2, "op": "CONSTS", "args": [""]},
+                {"offset": 3, "op": "CONSTS", "args": [""]},
+                {"offset": 4, "op": "CONSTS", "args": [""]},
+                {"offset": 5, "op": "CONSTS", "args": [""]},
+                {"offset": 6, "op": "CONSTS", "args": [""]},
+                {"offset": 7, "op": "CONSTS", "args": ["k_h_calo"]},
+                {"offset": 8, "op": "ACTION", "routine": 577, "argc": 1},
+                {"offset": 9, "op": "ACTION", "routine": 204, "argc": 11},
+                {"offset": 10, "op": "RETN"}
+            ]
+        });
+        collect(
+            &Decoded::Value(v),
+            &index,
+            &loaded,
+            &entries,
+            &None,
+            &roots,
+            &catalog_of(&index),
+            "k_def_calodef",
+            Some("ncs"),
+            StrRefMode::None,
+            &mut mentions,
+            &mut strrefs,
+            &mut missing,
+        );
+        assert!(
+            mentions.contains("k_h_calo.dlg"),
+            "nested GetPartyMemberByIndex must not drop DLG; mentions={mentions:?}"
+        );
+    }
+
+    #[test]
+    fn queue_movie_routine_id_differs_k1_k2() {
+        // K1 QueueMovie=769; K2 id 769 is SetFadeUntilScript, QueueMovie=806.
+        let mut k1 = HashSet::new();
+        let mut k2 = HashSet::new();
+        let roots = HashSet::new();
+        apply_ncs_strings(769, false, &["credits".into()], &mut k1, &roots);
+        apply_ncs_strings(769, true, &["credits".into()], &mut k2, &roots);
+        assert!(k1.contains("credits.bik"));
+        assert!(k2.is_empty());
+        apply_ncs_strings(806, true, &["credits".into()], &mut k2, &roots);
+        assert!(k2.contains("credits.bik"));
     }
 
     #[test]
@@ -2636,8 +3555,8 @@ mod tests {
             &mut missing,
         );
         assert!(
-            mentions.contains("npc01"),
-            "Conversation==template must edge to same-named dlg; mentions={mentions:?}"
+            mentions.contains("npc01.dlg"),
+            "Conversation must emit typed dlg; mentions={mentions:?}"
         );
     }
 
@@ -2691,8 +3610,8 @@ mod tests {
             &mut missing,
         );
         assert!(
-            mentions.contains("chat"),
-            "VO_ResRef must reach .lip even when equal to dlg name; mentions={mentions:?}"
+            mentions.contains("chat.lip") && mentions.contains("chat.wav"),
+            "VO_ResRef must emit wav+lip; mentions={mentions:?}"
         );
     }
 
@@ -2960,6 +3879,9 @@ mod tests {
 
         let mdl = ResType::from_extension("mdl").unwrap().0;
         let tpc = ResType::from_extension("tpc").unwrap().0;
+        let mdx = ResType::from_extension("mdx").unwrap().0;
+        let wok = ResType::from_extension("wok").unwrap().0;
+        let txi = ResType::from_extension("txi").unwrap().0;
         let mut index: Index = serde_json::from_value(serde_json::json!({
             "schema": 3,
             "root": dir.path().to_string_lossy(),
@@ -2972,7 +3894,10 @@ mod tests {
             ],
             "resources": [
                 {"resref":"test","restype":mdl,"file":0,"offset":0,"size":ascii.len(),"source":0},
+                {"resref":"test","restype":mdx,"file":0,"offset":0,"size":1,"source":0},
+                {"resref":"test","restype":wok,"file":0,"offset":0,"size":1,"source":0},
                 {"resref":"cm_baremetal","restype":tpc,"file":0,"offset":0,"size":1,"source":0},
+                {"resref":"cm_baremetal","restype":txi,"file":0,"offset":0,"size":1,"source":0},
                 {"resref":"m01aa_lm","restype":tpc,"file":0,"offset":0,"size":1,"source":0}
             ],
             "warnings": []
@@ -2983,13 +3908,28 @@ mod tests {
         let graph = build(&index).unwrap();
         let mentions: HashSet<&String> = graph.edges.values().flatten().collect();
         assert!(
-            mentions.iter().any(|s| *s == "cm_baremetal"),
+            mentions.iter().any(|s| s.as_str() == "cm_baremetal.tpc"),
             "edges={:?}",
             graph.edges
         );
         assert!(
-            mentions.iter().any(|s| *s == "m01aa_lm"),
+            mentions.iter().any(|s| s.as_str() == "m01aa_lm.tpc"),
             "edges={:?}",
+            graph.edges
+        );
+        assert!(
+            mentions.iter().any(|s| s.as_str() == "test.mdx"),
+            "MDL must edge same-ResRef MDX; edges={:?}",
+            graph.edges
+        );
+        assert!(
+            mentions.iter().any(|s| s.as_str() == "test.wok"),
+            "MDL must edge same-ResRef WOK; edges={:?}",
+            graph.edges
+        );
+        assert!(
+            mentions.iter().any(|s| s.as_str() == "cm_baremetal.txi"),
+            "texture open must edge TXI; edges={:?}",
             graph.edges
         );
     }

@@ -25,7 +25,8 @@ pub struct Args {
     #[command(flatten)]
     filter: Filter,
 
-    /// Exclude textures, models and audio from the report.
+    /// Exclude textures, models and music from the report. Dialog `.wav` and
+    /// `.lip` stay in: the engine opens them from `VO_ResRef` / TLK `sound`.
     #[arg(long)]
     no_assets: bool,
 

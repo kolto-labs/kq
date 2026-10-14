@@ -144,13 +144,25 @@ pub fn run(ctx: &Ctx, args: Args) -> Result<i32> {
     let decoded = render::decode_resource_mode(&index, resource, &bytes, disasm)?;
 
     if format == Format::Json {
-        let report = resource_json::build_resource_json(&index, resource, &decoded);
+        let mut report = resource_json::build_resource_json(&index, resource, &decoded);
+        if let Some(tlk) = load_dialog_tlk_for_cat(&index) {
+            resource_json::resolve_strrefs(&mut report.content, &tlk, resource.restype);
+        }
         ctx.out.json_value(&report)?;
         return Ok(exit::OK);
     }
 
     w.write_all(render::render(&decoded, format, &resource.filename())?.as_bytes())?;
     Ok(exit::OK)
+}
+
+/// Install `dialog.tlk` for StrRef display in `kq cat` JSON. Missing talk
+/// table (standalone `--from` file) leaves cells numeric / unresolved.
+fn load_dialog_tlk_for_cat(index: &Index) -> Option<kq_format::tlk::Tlk> {
+    let tlk_ty = ResType::from_extension("tlk")?;
+    let r = index.resolve("dialog", Some(tlk_ty))?;
+    let bytes = read::read(index, r).ok()?;
+    kq_format::tlk::read(&bytes, Path::new("dialog.tlk")).ok()
 }
 
 fn parse_type(ext: &str) -> Result<ResType> {
