@@ -161,35 +161,34 @@ fn walk_node_refs(
         let names_off = off
             .saturating_add(NODE_HEADER)
             .saturating_add(TRIMESH_BITMAP_OFF);
-        if names_off.saturating_add(64) <= geom.len() {
-            if r.seek(names_off).is_ok() {
-                if let Ok(bitmap) = r.fixed_string_cased(32) {
-                    push_ref(out, &bitmap);
-                }
-                if let Ok(lightmap) = r.fixed_string_cased(32) {
-                    push_ref(out, &lightmap);
-                }
+        if names_off.saturating_add(64) <= geom.len() && r.seek(names_off).is_ok() {
+            if let Ok(bitmap) = r.fixed_string_cased(32) {
+                push_ref(out, &bitmap);
+            }
+            if let Ok(lightmap) = r.fixed_string_cased(32) {
+                push_ref(out, &lightmap);
             }
         }
     }
 
-    if child_count > 0 && ptr_ok(children_off, geom.len(), child_count * 4) {
-        if r.seek(children_off).is_ok() {
-            let mut child_offs = Vec::with_capacity(child_count);
-            let mut ok = true;
-            for _ in 0..child_count {
-                match r.u32() {
-                    Ok(c) => child_offs.push(c as usize),
-                    Err(_) => {
-                        ok = false;
-                        break;
-                    }
+    if child_count > 0
+        && ptr_ok(children_off, geom.len(), child_count * 4)
+        && r.seek(children_off).is_ok()
+    {
+        let mut child_offs = Vec::with_capacity(child_count);
+        let mut ok = true;
+        for _ in 0..child_count {
+            match r.u32() {
+                Ok(c) => child_offs.push(c as usize),
+                Err(_) => {
+                    ok = false;
+                    break;
                 }
             }
-            if ok {
-                for child_off in child_offs {
-                    walk_node_refs(geom, path, child_off, visited, out);
-                }
+        }
+        if ok {
+            for child_off in child_offs {
+                walk_node_refs(geom, path, child_off, visited, out);
             }
         }
     }
