@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/kotor-ncs-isa",
+    "crates/kotor-ncs",
+    "crates/kotor-formats",
+    "crates/kotor-diff",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+license = "MIT"
+repository = "https://github.com/kolto-labs/kotor-formats"
+
+[workspace.dependencies]
+kotor-ncs-isa = { path = "crates/kotor-ncs-isa" }
+kotor-ncs = { path = "crates/kotor-ncs" }
+kotor-formats = { path = "crates/kotor-formats" }
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+strip = true
