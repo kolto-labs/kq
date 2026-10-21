@@ -101,8 +101,8 @@ struct Cli {
     )]
     install: Option<PathBuf>,
 
-    /// Path to the game's nwscript.nss. Decompiling and `cat --disasm` need
-    /// it unless --install points at an install that has one.
+    /// Optional path to the game's nwscript.nss. Supplies engine function
+    /// names and signatures for NCS decompilation and disassembly.
     #[arg(long, global = true, value_name = "FILE")]
     nwscript: Option<PathBuf>,
 

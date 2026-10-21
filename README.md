@@ -126,7 +126,8 @@ means that one archive.
 ### Engine function names
 
 Decompiling a script (`kq cat x.ncs`, `--disasm`, `kq grep -t ncs`, `kq graph`)
-needs the game's `nwscript.nss`. kq does not ship it. Give it one of two ways:
+can use the game's `nwscript.nss` for engine function names and signatures. kq
+does not ship it. Supply one of these sources when it is available:
 
 ```bash
 kq --nwscript ~/kotor/Override/nwscript.nss cat k_sup_dialog.ncs --text
@@ -134,7 +135,8 @@ kq -i ~/kotor cat k_sup_dialog.ncs --text
 ```
 
 With `-i`, kq finds `nwscript.nss` the way the game does: `Override` first,
-then the game's archives. Without either, the command stops and says what to pass.
+then the game's archives. Without either, kq still decodes the script and keeps
+numeric ACTION routine IDs, but it cannot add names or signatures from the game.
 
 ---
 

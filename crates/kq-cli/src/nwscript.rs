@@ -1,9 +1,10 @@
-//! Engine function names and signatures, read at runtime from a `nwscript.nss`
-//! the user supplies.
+//! Engine function names and signatures, read at runtime from an optional
+//! `nwscript.nss`.
 //!
-//! kq does not ship BioWare's script. It comes from `--nwscript FILE`, or
+//! kq does not ship BioWare's script. It can come from `--nwscript FILE`, or
 //! from the install named by `--install`, found the way the engine finds it:
-//! `Override` first, then the game's archives.
+//! `Override` first, then the game's archives. Without one, ACTION calls keep
+//! their numeric routine IDs and any built-in names remain available.
 
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value as J;
@@ -13,9 +14,6 @@ use kq_index::Index;
 use kq_ncs::ActionTable;
 
 use crate::{read, Ctx};
-
-const NEED: &str = "kq needs nwscript.nss for engine function names and does not ship it. \
-Pass --nwscript <file>, or --install <path> to an install that has one";
 
 /// The table for `restype`, or `None` when it is not an NCS and needs none.
 pub fn for_type<'a>(
@@ -30,7 +28,7 @@ pub fn for_type<'a>(
 }
 
 /// Signatures from `--nwscript`, else from the install's own `nwscript.nss`.
-/// Parsed once per run.
+/// An empty table is used when no script is available. Parsed once per run.
 pub fn table<'a>(ctx: &'a Ctx, index: Option<&Index>) -> Result<&'a ActionTable> {
     ctx.actions
         .get_or_init(|| load(ctx, index).map_err(|e| format!("{e:#}")))
@@ -43,21 +41,15 @@ fn load(ctx: &Ctx, index: Option<&Index>) -> Result<ActionTable> {
         let src = std::fs::read(file).with_context(|| format!("cannot read {}", file.display()))?;
         return parse(&src).with_context(|| file.display().to_string());
     }
-    let opened;
     let index = match index {
         Some(i) => i,
-        None => {
-            opened = ctx.index().map_err(|_| anyhow!(NEED))?;
-            &opened
-        }
+        None => return Ok(ActionTable::empty()),
     };
-    let nss = ResType::from_extension("nss").context("no nss resource type")?;
+    let Some(nss) = ResType::from_extension("nss") else {
+        return Ok(ActionTable::empty());
+    };
     let Some(r) = index.resolve("nwscript", Some(nss)) else {
-        bail!(
-            "{} has no nwscript.nss in Override or the game archives. \
-             Pass --nwscript <file>",
-            index.root.display()
-        );
+        return Ok(ActionTable::empty());
     };
     let src = read::read(index, r)?;
     parse(&src).with_context(|| format!("{}: nwscript.nss", index.root.display()))
