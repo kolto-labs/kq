@@ -18,6 +18,17 @@
 * accept `cat --module ROOT --tag TAG --type EXT` for typed placed GIT objects
 * accept standalone resource/archive paths in `cat --from` without installation discovery
 
+## [0.4.0](https://github.com/kolto-labs/kq/compare/v0.3.0...v0.4.0) (2026-10-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** Engine function signatures are read from an optional `--nwscript` file or the selected installation. Without a script, NCS output retains numeric routine IDs and unavailable decompilation falls back to disassembly. kq no longer bundles the game script.
+
+### Bug Fixes
+
+* **cli:** make nwscript.nss optional for NCS output ([#6](https://github.com/kolto-labs/kq/issues/6)) ([8e14365](https://github.com/kolto-labs/kq/commit/8e14365c0ffd7b5c035aa4f34dd2178d07537fdb))
+
 ## [0.3.0](https://github.com/kolto-labs/kq/compare/v0.2.0...v0.3.0) (2026-09-28)
 
 
