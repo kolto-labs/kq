@@ -1,0 +1,10 @@
+[package]
+name = "kotor-ncs-isa"
+description = "Instruction set definitions for KotOR/Odyssey NCS compiled script bytecode."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+license = "MIT"
+repository = "https://github.com/kolto-labs/kotor-formats"
+
+[dependencies]

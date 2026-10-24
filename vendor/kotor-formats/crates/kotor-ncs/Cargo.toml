@@ -1,0 +1,11 @@
+[package]
+name = "kotor-ncs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+license = "MIT"
+repository = "https://github.com/kolto-labs/kotor-formats"
+description = "NCS bytecode reader, writer, and DeNCS-algorithm decompiler."
+
+[dependencies]
+kotor-ncs-isa = { path = "../kotor-ncs-isa" }

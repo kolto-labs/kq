@@ -1,0 +1,17 @@
+[package]
+name = "kotor-diff"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+license = "MIT"
+repository = "https://github.com/kolto-labs/kotor-formats"
+description = "Compares BioWare Aurora/Odyssey data files and reports what changed."
+
+[features]
+default = []
+json = ["dep:serde", "dep:serde_json"]
+
+[dependencies]
+kotor-formats = { path = "../kotor-formats" }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", features = ["preserve_order"], optional = true }
