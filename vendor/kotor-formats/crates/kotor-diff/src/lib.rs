@@ -1,5 +1,3 @@
-#![allow(clippy::all)]
-
 //! Compares BioWare Aurora/Odyssey data files and reports what changed.
 //!
 //! Two tools needed this and each had grown its own answer. A query tool

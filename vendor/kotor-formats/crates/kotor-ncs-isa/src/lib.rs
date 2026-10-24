@@ -1,5 +1,3 @@
-#![allow(clippy::all)]
-
 //! The NCS instruction set, as data.
 //!
 //! An NCS instruction is identified by two bytes: an opcode and a type

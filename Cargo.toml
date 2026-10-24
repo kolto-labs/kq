@@ -2,6 +2,8 @@
 resolver = "2"
 members = ["crates/kq-format", "crates/kq-index", "crates/kq-cli", "crates/kq-ncs"]
 
+exclude = ["vendor/kotor-formats"]
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

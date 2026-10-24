@@ -1,5 +1,3 @@
-#![allow(clippy::all)]
-
 //! NCS → NSS decompiler (DeNCS algorithm port).
 
 mod actions;

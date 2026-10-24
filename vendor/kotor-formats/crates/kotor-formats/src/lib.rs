@@ -1,5 +1,3 @@
-#![allow(clippy::all)]
-
 //! Round-trip readers and writers for BioWare Aurora/Odyssey data formats.
 //!
 //! Loading a file and saving it back without edits produces the same bytes,

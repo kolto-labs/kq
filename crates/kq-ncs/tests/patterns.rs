@@ -31,7 +31,7 @@ fn golden_false_starting_conditional() {
         ("MOVSP", vec![Int(-4)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
+    let d = decompile(&ncs, Game::K1, &fixture_actions());
     assert_eq!(
         d.source.trim(),
         "int StartingConditional() {\n\treturn 0;\n}"
@@ -57,7 +57,7 @@ fn golden_k_pdan_juhani11_if() {
         ("ACTION", vec![Int(581), Int(2)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
+    let d = decompile(&ncs, Game::K1, &fixture_actions());
     assert_eq!(
         d.source.trim(),
         "void main() {\n\tif (GetGlobalNumber(\"DAN_JEDI_PLOT\") == 3) {\n\t\tSetGlobalNumber(\"DAN_JEDI_PLOT\", 4);\n\t}\n\tSetGlobalNumber(\"DAN_JUHANI_PLOT\", 2);\n}"
@@ -105,7 +105,7 @@ fn golden_hjuh_h02_and_guard() {
         ("MOVSP", vec![Int(-4)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
+    let d = decompile(&ncs, Game::K1, &fixture_actions());
     assert_eq!(
         d.source.trim(),
         "int StartingConditional() {\n\tint int1 = GetGlobalNumber(\"G_JUHANIH_STATE\") == 1 && GetHitDice(GetFirstPC()) > GetGlobalNumber(\"T_LEVH\");\n\tif (int1) {\n\t\tSetGlobalNumber(\"G_JUHANIH_STATE\", 2);\n\t\tSetGlobalNumber(\"T_LEVH\", GetGlobalNumber(\"T_LEVH\") + 1);\n\t}\n\treturn int1;\n}"
@@ -134,7 +134,7 @@ fn golden_while() {
         ("MOVSP", vec![Int(-4)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
+    let d = decompile(&ncs, Game::K1, &fixture_actions());
     assert_eq!(
         d.source.trim(),
         "void main() {\n\tint int1 = 0;\n\twhile (int1 < 3) {\n\t\tint1++;\n\t}\n}"
@@ -163,7 +163,7 @@ fn do_while_jz_skips_back_edge() {
         ("MOVSP", vec![Int(-4)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
+    let d = decompile(&ncs, Game::K1, &fixture_actions());
     assert_eq!(
         d.source.trim(),
         "void main() {\n\tint int1 = 0;\n\tdo {\n\t\tint1++;\n\t} while (int1 < 3);\n}"
@@ -297,7 +297,7 @@ fn golden_pman_comp08_full() {
         ("MOVSP", vec![Int(-8)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
+    let d = decompile(&ncs, Game::K1, &fixture_actions());
     assert_eq!(
         d.source.trim(),
         "\
@@ -344,7 +344,7 @@ fn golden_pdan_mand04_or() {
         ("MOVSP", vec![Int(-4)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
+    let d = decompile(&ncs, Game::K1, &fixture_actions());
     assert_eq!(
         d.source.trim(),
         "\
@@ -381,7 +381,7 @@ fn switch_with_default() {
         ("MOVSP", vec![Int(-4)]),
         ("RETN", vec![]),
     ]);
-    let d = decompile(&ncs, Game::K1, &kq_ncs::ActionTable::empty());
+    let d = decompile(&ncs, Game::K1, &fixture_actions());
     assert_eq!(
         d.source.trim(),
         "\
@@ -416,4 +416,65 @@ fn cfg_log_or_extra_jz_from_mand04_shape() {
     let cfg = analyze(&ins, &p.main, &p.deferred);
     let extra_jz_idx = ins.iter().position(|i| i.offset == 49).unwrap();
     assert!(cfg.log_or_extra_jz.contains(&extra_jz_idx));
+}
+
+// Only signatures used by these hand-assembled programs. Production callers
+// continue to supply their own table from nwscript.nss.
+fn fixture_actions() -> kq_ncs::ActionTable {
+    use kq_ncs::{ActionSig, ActionTable, ParamSig, Ty};
+    let mut actions = vec![None; 582];
+    for (id, name, ret, params) in [
+        (4, "PrintInteger", Ty::Void, vec![(Ty::Int, None)]),
+        (
+            6,
+            "AssignCommand",
+            Ty::Void,
+            vec![(Ty::Object, None), (Ty::Action, None)],
+        ),
+        (
+            37,
+            "ActionAttack",
+            Ty::Void,
+            vec![(Ty::Object, None), (Ty::Int, Some("0"))],
+        ),
+        (42, "GetIsObjectValid", Ty::Int, vec![(Ty::Object, None)]),
+        (166, "GetHitDice", Ty::Int, vec![(Ty::Object, None)]),
+        (
+            229,
+            "GetNearestObjectByTag",
+            Ty::Object,
+            vec![
+                (Ty::Str, None),
+                (Ty::Object, Some("OBJECT_SELF")),
+                (Ty::Int, Some("1")),
+            ],
+        ),
+        (
+            412,
+            "ChangeToStandardFaction",
+            Ty::Void,
+            vec![(Ty::Object, None), (Ty::Int, None)],
+        ),
+        (548, "GetFirstPC", Ty::Object, vec![]),
+        (580, "GetGlobalNumber", Ty::Int, vec![(Ty::Str, None)]),
+        (
+            581,
+            "SetGlobalNumber",
+            Ty::Void,
+            vec![(Ty::Str, None), (Ty::Int, None)],
+        ),
+    ] {
+        actions[id] = Some(ActionSig {
+            name: name.into(),
+            ret,
+            params: params
+                .into_iter()
+                .map(|(ty, default)| ParamSig {
+                    ty,
+                    default: default.map(str::to_owned),
+                })
+                .collect(),
+        });
+    }
+    ActionTable::new(actions)
 }

@@ -29,7 +29,24 @@ fn cfgs_for(ins: &[Instruction], program: &SplitProgram) -> HashMap<SubId, Cfg> 
 fn infer(ins: &[Instruction]) -> (HashMap<SubId, kq_ncs::SubInfo>, Vec<kq_ncs::Warning>) {
     let program = split(ins).unwrap();
     let cfgs = cfgs_for(ins, &program);
-    infer_prototypes(ins, &program, &cfgs, &kq_ncs::ActionTable::empty())
+    // This fixture uses routine 22 with heterogeneous parameters. Supply its
+    // signature explicitly now that the decompiler has no built-in table.
+    let mut signatures = vec![None; 23];
+    signatures[22] = Some(kq_ncs::ActionSig {
+        name: "FixtureAction".into(),
+        ret: Ty::Void,
+        params: vec![
+            kq_ncs::ParamSig {
+                ty: Ty::Object,
+                default: None,
+            },
+            kq_ncs::ParamSig {
+                ty: Ty::Int,
+                default: None,
+            },
+        ],
+    });
+    infer_prototypes(ins, &program, &cfgs, &kq_ncs::ActionTable::new(signatures))
 }
 
 #[test]
