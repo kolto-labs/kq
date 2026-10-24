@@ -23,7 +23,7 @@
 
 ### ⚠ BREAKING CHANGES
 
-* **cli:** .ncs commands fail without --nwscript or --install. Before, names came from the install when present and stayed numbers otherwise.
+* **cli:** Engine function signatures are read from an optional `--nwscript` file or the selected installation. Without a script, NCS output retains numeric routine IDs and unavailable decompilation falls back to disassembly. kq no longer bundles the game script.
 
 ### Bug Fixes
 
